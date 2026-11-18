@@ -1,0 +1,67 @@
+
+name: NoteGenie Android APK Build
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android tools
+        run: |
+          sdkmanager "platforms;android-35" \
+            "build-tools;35.0.0" \
+            "ndk;27.2.12479018" \
+            "cmake;3.22.1"
+
+      - name: Extract project
+        run: |
+          unzip -q notegenie-android-native-integration.zip -d source
+
+      - name: Build Web App
+        working-directory: source/notegenie-work
+        run: |
+          npm ci
+          npm run build
+          npx cap sync android
+
+      - name: Install Gradle
+        run: |
+          wget -q https://services.gradle.org/distributions/gradle-8.9-bin.zip
+          unzip -q gradle-8.9-bin.zip -d /tmp
+
+      - name: Build APK
+        run: |
+          /tmp/gradle-8.9/bin/gradle \
+            -p source/notegenie-work/android \
+            assembleDebug --no-daemon
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: NoteGenie-AI-APK
+          path: source/notegenie-work/android/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 7
