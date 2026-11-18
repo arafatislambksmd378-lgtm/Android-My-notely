@@ -55,7 +55,7 @@ jobs:
 
       - name: Install dependencies
         working-directory: source/notegenie-work
-        run: npm ci
+        run: npm install --no-audit --no-fund
 
       - name: Build Web App
         working-directory: source/notegenie-work
