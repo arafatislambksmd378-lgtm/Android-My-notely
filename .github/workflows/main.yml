@@ -7,9 +7,14 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: notegenie-android-build
+  cancel-in-progress: true
+
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout
@@ -26,24 +31,35 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Configure Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
 
       - name: Install Android tools
         run: |
-          sdkmanager "platforms;android-35" \
+          yes | sdkmanager --licenses
+          sdkmanager --install \
+            "platforms;android-35" \
             "build-tools;35.0.0" \
             "ndk;27.2.12479018" \
             "cmake;3.22.1"
 
       - name: Extract project
         run: |
+          test -f notegenie-android-native-integration.zip
           unzip -q notegenie-android-native-integration.zip -d source
+          test -f source/notegenie-work/package.json
+          test -f source/notegenie-work/android/app/build.gradle
+
+      - name: Install dependencies
+        working-directory: source/notegenie-work
+        run: npm ci
 
       - name: Build Web App
         working-directory: source/notegenie-work
         run: |
-          npm ci
           npm run build
           npx cap sync android
 
@@ -56,12 +72,20 @@ jobs:
         run: |
           /tmp/gradle-8.9/bin/gradle \
             -p source/notegenie-work/android \
-            assembleDebug --no-daemon
+            assembleDebug \
+            --no-daemon \
+            --stacktrace
+
+      - name: Verify APK
+        run: |
+          APK="source/notegenie-work/android/app/build/outputs/apk/debug/app-debug.apk"
+          test -s "$APK"
+          ls -lh "$APK"
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: NoteGenie-AI-APK
-          path: source/notegenie-work/android/app/build/outputs/apk/debug/*.apk
+          path: source/notegenie-work/android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
           retention-days: 7
