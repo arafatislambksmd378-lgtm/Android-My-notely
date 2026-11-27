@@ -44,7 +44,10 @@ import androidx.compose.ui.unit.sp
 import com.notely.app.doc.*
 import com.notely.app.export.Exporters
 import com.notely.app.ui.components.ChartView
+import com.notely.app.ui.components.ClayCard
+import com.notely.app.ui.components.ClayIconTile
 import com.notely.app.ui.components.ClayPill
+import com.notely.app.ui.components.ClayPrimaryButton
 import com.notely.app.ui.components.ClaySoftButton
 import com.notely.app.ui.components.ColorDot
 import com.notely.app.ui.theme.CardColors
