@@ -205,6 +205,31 @@ jobs:
             "system-images;android-34;default;x86_64" "emulator" > /dev/null
           echo "sdk.dir=$SDK_ROOT" > local.properties
 
+      - name: Boot an emulator
+        run: |
+          set -o pipefail
+          INFO=/tmp/boot.md
+          echo "### Emulator boot" > "$INFO"
+          echo '```' >> "$INFO"
+          echo no | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" create avd \
+            -n notely -k "system-images;android-34;default;x86_64" -d pixel_5 --force >> "$INFO" 2>&1
+          nohup "$ANDROID_SDK_ROOT/emulator/emulator" -avd notely -no-window -no-audio \
+            -no-boot-anim -gpu swiftshader_indirect -no-snapshot -accel auto \
+            > /tmp/emulator.log 2>&1 &
+          echo "waiting for the device…" >> "$INFO"
+          timeout 300 adb wait-for-device >> "$INFO" 2>&1
+          for i in $(seq 1 90); do
+            booted=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            if [ "$booted" = "1" ]; then echo "boot completed after ~$((i*5))s" >> "$INFO"; break; fi
+            sleep 5
+          done
+          adb devices >> "$INFO" 2>&1
+          echo '```' >> "$INFO"
+          cat "$INFO"
+          echo "EMULATOR_INFO<<EOF" >> "$GITHUB_ENV"
+          cat "$INFO" >> "$GITHUB_ENV"
+          echo "EOF" >> "$GITHUB_ENV"
+
       - uses: gradle/actions/setup-gradle@v3
 
       - name: Build debug APK
@@ -220,8 +245,8 @@ jobs:
           fail=0
           echo "## Device run ${{ github.run_number }} (${{ github.sha }})" > "$REPORT"
           echo "" >> "$REPORT"
-
-          adb wait-for-device
+          printf '%s\n\n' "$EMULATOR_INFO" >> "$REPORT"
+          timeout 300 adb wait-for-device || { echo "- **no device**" >> "$REPORT"; fail=1; }
           echo "- adb devices: \`\`\`$(adb devices | tail -n +2 | tr '\n' ';')\`\`\`" >> "$REPORT"
 
           stage=install
