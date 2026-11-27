@@ -74,7 +74,11 @@ a real `PdfDocument`, so it is exercised only by the instrumented/manual pass.
 
 ## Known limitations (deliberate, documented in-app where user-visible)
 
-- DOCX/ODT/RTF/HTML export references embedded images by filename instead of inlining the binary.
+- DOCX and ODT embed image bytes in the package (`word/media/…`, `Pictures/…`). HTML and Markdown
+  reference the local file path instead, which is inherent to those formats.
+- Image handling in DOCX/ODT/PDF is implemented but only unit-verified at the archive level
+  (the exported ZIP contains the media part); the rendered layout was not opened in Word or
+  LibreOffice here, so pixel-level fidelity is unverified.
 - Drawing output is a raster PNG, not vector strokes.
 - No OpenCV rectification in the scanner; capture → OCR only.
 - Spell check uses the platform `SpellCheckerService`; a device with no spell-checker pack gets no squiggles.
