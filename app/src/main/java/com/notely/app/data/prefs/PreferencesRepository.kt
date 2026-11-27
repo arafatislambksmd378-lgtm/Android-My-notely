@@ -12,6 +12,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.notely.app.ui.theme.Accent
 import com.notely.app.ui.theme.ThemeMode
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "notely_prefs")
@@ -65,12 +66,12 @@ class PreferencesRepository(private val context: Context) {
      * still works — the key is only ever used for the user's own provider calls.
      */
     suspend fun getAiApiKey(): String {
-        val raw = kotlinx.coroutines.flow.first(context.dataStore.data)[Keys.AI_API_KEY] ?: ""
+        val raw = context.dataStore.data.first()[Keys.AI_API_KEY] ?: ""
         return Crypto.decrypt(raw)
     }
 
     suspend fun verifyPin(pin: String): Boolean {
-        val stored = kotlinx.coroutines.flow.first(pinHash)
+        val stored = pinHash.first()
         if (stored.isBlank()) return false
         val ok = com.notely.app.util.Security.verifyPin(pin, stored)
         // Transparently migrate an old unsalted hash to salted PBKDF2 after a
@@ -94,7 +95,7 @@ class PreferencesRepository(private val context: Context) {
     suspend fun setAppLock(v: Boolean) = context.dataStore.edit { it[Keys.APP_LOCK] = v }
     suspend fun setPinHash(h: String) = context.dataStore.edit { it[Keys.PIN_HASH] = h }
     suspend fun addRecentSearch(q: String) {
-        val cur = recentSearches.let { kotlinx.coroutines.flow.first(it) }.toMutableList()
+        val cur = recentSearches.first().toMutableList()
         cur.remove(q); cur.add(0, q)
         context.dataStore.edit { it[Keys.RECENT_SEARCHES] = cur.take(8).joinToString("\n") }
     }
