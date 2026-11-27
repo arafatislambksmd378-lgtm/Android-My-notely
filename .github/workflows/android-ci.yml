@@ -223,10 +223,16 @@ jobs:
           echo "system-images: $(ls "$ANDROID_SDK_ROOT/system-images/android-34/default" 2>&1)"
           echo "which adb: $(command -v adb || echo MISSING)"
           echo "which emulator: $(command -v emulator || echo MISSING)"
-          echo no | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" create avd \
-            -n notely -k "system-images;android-34;default;x86_64" -d pixel_5 --force >> "$INFO" 2>&1 || \
-            echo "avdmanager create failed" >> "$INFO"
-          ls "$HOME/.android/avd" >> "$INFO" 2>&1 || true
+          mkdir -p "$HOME/.android/avd"
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          echo "avd_home=$ANDROID_AVD_HOME" >> "$INFO"
+          printf 'no\n' | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" create avd \
+            -n notely -k "system-images;android-34;default;x86_64" --force >> "$INFO" 2>&1
+          echo "avdmanager rc=$?" >> "$INFO"
+          echo "--- available avds ---" >> "$INFO"
+          "$ANDROID_SDK_ROOT/emulator/emulator" -list-avds >> "$INFO" 2>&1 || true
+          ls -la "$ANDROID_AVD_HOME" >> "$INFO" 2>&1 || true
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
           nohup "$ANDROID_SDK_ROOT/emulator/emulator" -avd notely -no-window -no-audio \
             -no-boot-anim -gpu swiftshader_indirect -no-snapshot -accel auto \
             > /tmp/emulator.log 2>&1 &
