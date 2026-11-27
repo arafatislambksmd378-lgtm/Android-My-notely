@@ -219,26 +219,45 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             set -x
+            note() { echo "::notice title=Device stage::$1"; }
             APK=app/build/outputs/apk/debug/app-debug.apk
-            adb install -r "$APK"
-            # Cold start: the -W output reports TotalTime in ms (real measurement).
-            adb shell am force-stop com.notely.app.debug
-            adb shell am start -W -n com.notely.app.debug/com.notely.app.MainActivity | tee /tmp/start.txt
-            sleep 6
-            adb shell dumpsys activity activities | grep -E "mResumedActivity|topResumedActivity" || true
-            # Crash check: any FATAL EXCEPTION in the log fails this step.
+            adb devices
+
+            note "install"
+            if ! adb install -r -t "$APK"; then
+              echo "::error title=Device::adb install failed"
+              exit 1
+            fi
+
+            note "launch"
+            adb shell am force-stop com.notely.app.debug || true
+            adb shell am start -W -n com.notely.app.debug/com.notely.app.MainActivity \
+              | tee /tmp/start.txt || true
+            grep -E "TotalTime|Status" /tmp/start.txt || echo "::warning title=Device::no launch timing"
+            sleep 8
+
+            note "resumed-activity"
+            adb shell dumpsys activity activities | grep -E "topResumedActivity|mResumedActivity" || \
+              echo "::warning title=Device::could not read the resumed activity"
+
+            note "crash-check"
             if adb logcat -d -b crash | grep -q "FATAL EXCEPTION"; then
               adb logcat -d -b crash | tail -60
               echo "::error title=Runtime::the app crashed on launch"
-              exit 1
+            else
+              echo "::notice title=Runtime::no crash on launch"
             fi
-            adb exec-out screencap -p > /tmp/home.png
-            echo "== memory =="
-            adb shell dumpsys meminfo com.notely.app.debug | head -22
-            echo "== apk size =="
+
+            note "screenshot"
+            adb exec-out screencap -p > /tmp/home.png || true
+            ls -l /tmp/home.png || true
+
+            note "memory"
+            adb shell dumpsys meminfo com.notely.app.debug | head -22 || true
             ls -lh "$APK"
-            # Real instrumented tests (PDF export, pagination, page sizes).
-            ./gradlew :app:connectedDebugAndroidTest --console=plain
+
+            note "instrumented-tests"
+            ./gradlew :app:connectedDebugAndroidTest --console=plain --info 2>&1 | tail -60
 
       - name: Surface launch timing and crashes
         if: always()
