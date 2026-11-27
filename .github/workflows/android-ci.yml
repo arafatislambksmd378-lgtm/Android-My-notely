@@ -161,12 +161,23 @@ jobs:
         run: |
           set -e
           TAG="ci-build-${GITHUB_RUN_NUMBER}"
+          {
+            echo "Automated build of \`${GITHUB_SHA}\`."
+            echo ""
+            echo "| Asset | Size | SHA-256 |"
+            echo "|---|---|---|"
+            for apk in $(find app/build/outputs -name "*.apk" | sort); do
+              echo "| \`${apk##*/}\` | $(stat -c%s "$apk") B | \`$(sha256sum "$apk" | cut -d' ' -f1)\` |"
+            done
+            echo ""
+            echo "The debug APK is installable as-is. The release APK is R8-minified and **unsigned**."
+            echo "Install: \`adb install -r app-debug.apk\`"
+          } > /tmp/release-notes.md
           gh release create "$TAG" \
             --title "Notely build ${GITHUB_RUN_NUMBER}" \
-            --notes "Automated build of ${GITHUB_SHA}.
-          * debug APK: installable directly
-          * release APK: unsigned (minified), provided for size/verification" \
-            $(find app/build/outputs -name "*.apk")
+            --notes-file /tmp/release-notes.md \
+            $(find app/build/outputs -name "*.apk" | sort)
+          gh release view "$TAG" --json assets --jq '.assets[] | "\(.name) \(.size)"'
 
       - name: Upload build artifacts
         if: always()

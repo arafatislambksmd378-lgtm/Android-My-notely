@@ -1,22 +1,28 @@
 # Notely — Delivery Report
 
 Branch: `arena/20d1dbca-android-my-notely` (from `0858c47`)
-Final verified run: GitHub Actions **46035754705 — both jobs success** (release `ci-build-41`).
+Final verified run: GitHub Actions **46036906770** — both jobs success (build, test, lint, package, emulator install/launch, instrumented tests).
 
->The APK is **not bit-reproducible** (the packaging step embeds a build timestamp), so the SHA-256 below
->identifies the asset attached to that release. Verify a download with:
->
->```bash
->gh release view ci-build-41 --json assets --jq '.assets[] | "\(.name) \(.size)"'
->sha256sum app-debug.apk
->```
+### Download
 
-## A. Installable artifacts
+| Artifact | Size | Link |
+|---|---|---|
+| `app-debug.apk` (installable) | 62 860 797 B (60 MB) | https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/latest/download/app-debug.apk |
+| `app-release-unsigned.apk` (R8-minified, needs signing) | 45 457 709 B (44 MB) | https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/latest/download/app-release-unsigned.apk |
 
-| Artifact | Size | SHA-256 | Link |
-|---|---|---|---|
-| `app-debug.apk` | 62 860 797 B (60 MB) | `442a13a53e4e2e7ddd9ce408f294b5852789d5934ef3144d0271d761e11c2ff1` | https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/latest/download/app-debug.apk |
-| `app-release-unsigned.apk` | 45 457 709 B (44 MB) | `250b4d2522de03b17906ea4268e066f3ae79a6a4ee1fb407bffdfba51e1831c0` | https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/latest/download/app-release-unsigned.apk |
+The APK is **not bit-reproducible** (packaging embeds a build timestamp), so hashes change on every run.
+The exact SHA-256 of each published asset is printed in that release's notes:
+
+```bash
+gh release view --json body --jq .body            # table of asset · size · sha256
+sha256sum app-debug.apk                           # compare after downloading
+```
+
+Install:
+
+```bash
+adb install -r app-debug.apk
+```
 
 The debug APK was installed and launched on an Android 14 (API 34) x86_64 emulator as part of CI.
 The release APK is R8-minified and resource-shrunk but **unsigned**; it must be signed before it can be
