@@ -17,6 +17,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.notely.app.ui.NotelyNavHost
 import com.notely.app.ui.security.AppLockGate
 import com.notely.app.ui.theme.Accent
@@ -43,10 +44,10 @@ class MainActivity : ComponentActivity() {
         consumeReminderIntent(intent)
 
         setContent {
-            val mode by app.prefs.themeMode.collectAsState(initial = ThemeMode.SYSTEM)
-            val accent by app.prefs.accent.collectAsState(initial = Accent.PURPLE)
-            val lockEnabled by app.prefs.appLock.collectAsState(initial = false)
-            val pinHash by app.prefs.pinHash.collectAsState(initial = "")
+            val mode by app.prefs.themeMode.collectAsStateWithLifecycle(initial = ThemeMode.SYSTEM)
+            val accent by app.prefs.accent.collectAsStateWithLifecycle(initial = Accent.PURPLE)
+            val lockEnabled by app.prefs.appLock.collectAsStateWithLifecycle(initial = false)
+            val pinHash by app.prefs.pinHash.collectAsStateWithLifecycle(initial = "")
 
             var unlocked by remember { mutableStateOf(false) }
             val lifecycle = LocalLifecycleOwner.current

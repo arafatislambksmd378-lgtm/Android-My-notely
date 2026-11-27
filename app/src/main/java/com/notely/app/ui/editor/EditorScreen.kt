@@ -23,6 +23,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.material3.*
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -82,11 +83,11 @@ fun EditorScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
-    val autosave by app.prefs.autosave.collectAsState(initial = true)
-    val spellcheck by app.prefs.spellcheck.collectAsState(initial = true)
+    val autosave by app.prefs.autosave.collectAsStateWithLifecycle(initial = true)
+    val spellcheck by app.prefs.spellcheck.collectAsStateWithLifecycle(initial = true)
     val noteFlow = remember(noteId) { app.notes.observeById(noteId) }
-    val note by noteFlow.collectAsState(initial = null)
-    val notebooks by app.notebooks.observeActive().collectAsState(initial = emptyList())
+    val note by noteFlow.collectAsStateWithLifecycle(initial = null)
+    val notebooks by app.notebooks.observeActive().collectAsStateWithLifecycle(initial = emptyList())
 
     var blocks by remember { mutableStateOf(listOf(DocumentBlock())) }
     var pageSetup by remember { mutableStateOf(PageSetup()) }
