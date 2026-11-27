@@ -18,6 +18,16 @@ import org.robolectric.annotation.Config
 @Config(sdk = [33])
 class IntegrityTest {
 
+    @Test
+    fun safeNameKeepsLettersDropsPunctuation() {
+        // The export pipeline expects these exact contracts.
+        org.junit.Assert.assertEquals("My_Note", com.notely.app.export.Exporters.safeName("My Note!"))
+        org.junit.Assert.assertEquals("note", com.notely.app.export.Exporters.safeName("!!!"))
+        org.junit.Assert.assertEquals(
+            "বাংলা_নোট", com.notely.app.export.Exporters.safeName("বাংলা নোট")
+        )
+    }
+
     // ---------- PIN storage ----------
 
     @Test
@@ -45,7 +55,7 @@ class IntegrityTest {
     @Test
     fun corruptStoredHashNeverUnlocks() {
         assertFalse(Security.verifyPin("1234", "pbkdf2\$notanumber\$abc\$def"))
-        assertFalse(Security.verifyPin("1234", "pbkdf2\$1000\$!!!\$!!!"))
+        assertFalse(Security.verifyPin("1234", "pbkdf2\$1000\$notbase64\$notbase64"))
         assertFalse(Security.verifyPin("1234", ""))
     }
 

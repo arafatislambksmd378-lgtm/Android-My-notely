@@ -89,6 +89,7 @@ object Exporters {
         val reserved = setOf("CON", "PRN", "AUX", "NUL", "COM1", "COM2", "LPT1", "LPT2")
         val cleaned = title.trim()
             .filterNot { it.code < 0x20 || it in "\\/:*?\"<>|" }
+            .filterNot { it in "!@#$%^&(){}[];'\u2019\u201c\u201d~`+=," }
             .trim()
             .trimEnd('.')
         val underscored = cleaned.replace(Regex("\\s+"), "_")
@@ -627,6 +628,10 @@ img{max-width:100%;}table{margin:8px 0;}p{margin:6px 0;}</style></head>
             }
         }
         page?.let { doc.finishPage(it) }
+        // The final page must be finished *before* writeTo(); finishing it afterwards
+        // throws IllegalStateException("document is closed!") and truncates the file.
+        page?.let { doc.finishPage(it) }
+        page = null
         val out = ByteArrayOutputStream()
         doc.writeTo(out)
         doc.close()
