@@ -458,14 +458,14 @@ img{max-width:100%;}table{margin:8px 0;}p{margin:6px 0;}</style></head>
          */
         fun ensureSpace(needed: Float) {
             if (page == null || !hasLivePage) startPage()
-            if (y + wanted(needed) > pageH - mb) {
+            // Clamp absurd requests (e.g. a very tall image) so the loop below can
+            // never ask for more room than a page physically has.
+            val need = needed.coerceAtMost((pageH - mt - mb).toFloat())
+            if (y + need > pageH - mb) {
                 startPage()
-                // A block taller than the text area is clamped rather than looping.
                 y = mt.toFloat()
             }
         }
-
-        fun wanted(needed: Float): Float = needed.coerceAtMost((pageH - mt - mb).toFloat())
 
         fun drawWrapped(text: String, p: Paint, lineH: Float, indent: Float = 0f) {
             if (text.isEmpty()) { y += lineH; return }
