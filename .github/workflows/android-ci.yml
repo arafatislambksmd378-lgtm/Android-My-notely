@@ -1,0 +1,84 @@
+name: Android CI
+
+# Real compilation, unit tests, lint and APK packaging on GitHub-hosted runners.
+# Nothing in this workflow is required for the app itself to be offline-first:
+# it exists purely so a build is reproducible without a local Android SDK.
+on:
+  push:
+    branches: [ "main", "arena/**" ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build, test, lint and package
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install required SDK packages
+        run: |
+          sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "platform-tools" > /dev/null
+          echo "sdk.dir=$ANDROID_SDK_ROOT" > local.properties
+
+      - name: Set up Gradle (with dependency cache)
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Show toolchain versions
+        run: |
+          java -version
+          ./gradlew --version
+
+      - name: Compile Kotlin (debug)
+        run: ./gradlew :app:compileDebugKotlin --stacktrace
+
+      - name: Run JVM unit tests
+        run: ./gradlew :app:testDebugUnitTest --stacktrace
+
+      - name: Android Lint
+        run: ./gradlew :app:lintDebug --stacktrace
+        continue-on-error: true
+
+      - name: Assemble debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Assemble release APK (unsigned, for size/verify)
+        run: ./gradlew :app:assembleRelease --stacktrace
+        continue-on-error: true
+
+      - name: Collect reports and artifacts
+        if: always()
+        run: |
+          mkdir -p ci-out
+          find app/build/test-results -name "*.xml" -exec cp --parents {} ci-out/ \; 2>/dev/null || true
+          find app/build/outputs -name "*.apk" -exec cp --parents {} ci-out/ \; 2>/dev/null || true
+          find app/build/reports -maxdepth 3 -type f -name "*.html" -exec cp --parents {} ci-out/ \; 2>/dev/null || true
+          ls -lR ci-out | head -50
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notely-build-${{ github.run_number }}
+          path: ci-out/**
+          if-no-files-found: warn
+          retention-days: 14
