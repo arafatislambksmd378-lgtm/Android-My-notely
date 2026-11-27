@@ -137,6 +137,19 @@ jobs:
               print(f"::notice title=Unit tests::{total} run, {failures} failed, {skipped} skipped")
           PYEOF
 
+      - name: APK composition (largest components)
+        if: always()
+        run: |
+          BUNDLE="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/bundletool.jar"
+          APK=$(find app/build/outputs -name "app-debug.apk" | head -1)
+          if [ -n "$APK" ]; then
+            echo "== top entries by uncompressed size =="
+            unzip -l "$APK" | sort -k1 -n -r | head -18
+            echo "== dex/lib breakdown =="
+            unzip -l "$APK" | awk '/classes[0-9]*\.dex|lib\/|assets\/|res\// {print $1, $4}' | \
+              awk '{split($2,a,"/"); key=a[1]; sz[key]+=$1} END {for (k in sz) printf "%-12s %8.1f MB\n", k, sz[k]/1048576}' | sort -k2 -n -r
+          fi
+
       - name: Publish APK to a GitHub Release
         if: github.event_name == 'push'
         env:
