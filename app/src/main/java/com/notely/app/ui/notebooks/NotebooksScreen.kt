@@ -42,17 +42,17 @@ enum class FilterMode(val label: String) {
 fun NotebooksScreen(app: NotelyApp, onOpenNote: (Long) -> Unit) {
     val c = LocalNotelyColors.current
     val scope = rememberCoroutineScope()
-    val notebooks by app.notebooks.observeActive().collectAsStateWithLifecycle(initial = emptyList())
-    val allNotes by app.notes.observeActive().collectAsStateWithLifecycle(initial = emptyList())
-    val archivedNotes by app.notes.observeArchived().collectAsStateWithLifecycle(initial = emptyList())
-    val trashedNotes by app.notes.observeTrashed().collectAsStateWithLifecycle(initial = emptyList())
-    val trashedNotebooks by app.notebooks.observeTrashed().collectAsStateWithLifecycle(initial = emptyList())
-    val tags by app.tags.observeAll().collectAsStateWithLifecycle(initial = emptyList())
+    val notebooks by app.notebooks.observeActive().collectAsStateWithLifecycle(initialValue = emptyList())
+    val allNotes by app.notes.observeActive().collectAsStateWithLifecycle(initialValue = emptyList())
+    val archivedNotes by app.notes.observeArchived().collectAsStateWithLifecycle(initialValue = emptyList())
+    val trashedNotes by app.notes.observeTrashed().collectAsStateWithLifecycle(initialValue = emptyList())
+    val trashedNotebooks by app.notebooks.observeTrashed().collectAsStateWithLifecycle(initialValue = emptyList())
+    val tags by app.tags.observeAll().collectAsStateWithLifecycle(initialValue = emptyList())
     // Declared before the flow below so the tag filter can be derived from it.
     var selectedTag by remember { mutableStateOf<Long?>(null) }
     val taggedNoteIds by remember(selectedTag) {
         selectedTag?.let { app.tags.notesForTag(it) } ?: kotlinx.coroutines.flow.flowOf(emptyList())
-    }.collectAsStateWithLifecycle(initial = emptyList())
+    }.collectAsStateWithLifecycle(initialValue = emptyList())
 
     var selectedNb by remember { mutableStateOf<Long?>(null) }
     var sort by remember { mutableStateOf(SortMode.RECENT) }
@@ -442,7 +442,7 @@ private fun NotebookEditorSheet(
 ) {
     val c = LocalNotelyColors.current
     val scope = rememberCoroutineScope()
-    val allNotebooks by app.notebooks.observeActive().collectAsStateWithLifecycle(initial = emptyList())
+    val allNotebooks by app.notebooks.observeActive().collectAsStateWithLifecycle(initialValue = emptyList())
     var name by remember(notebook.id) { mutableStateOf(notebook.name) }
     var icon by remember(notebook.id) { mutableStateOf(notebook.icon) }
     var color by remember(notebook.id) { mutableStateOf(notebook.colorIndex) }
@@ -551,10 +551,10 @@ private fun TrashSheet(
 
 @Composable
 private fun NotebookStatsDialog(app: NotelyApp, onDismiss: () -> Unit) {
-    val notes by app.notes.observeActive().collectAsStateWithLifecycle(initial = emptyList())
-    val archived by app.notes.observeArchived().collectAsStateWithLifecycle(initial = emptyList())
-    val trashed by app.notes.observeTrashed().collectAsStateWithLifecycle(initial = emptyList())
-    val notebooks by app.notebooks.observeActive().collectAsStateWithLifecycle(initial = emptyList())
+    val notes by app.notes.observeActive().collectAsStateWithLifecycle(initialValue = emptyList())
+    val archived by app.notes.observeArchived().collectAsStateWithLifecycle(initialValue = emptyList())
+    val trashed by app.notes.observeTrashed().collectAsStateWithLifecycle(initialValue = emptyList())
+    val notebooks by app.notebooks.observeActive().collectAsStateWithLifecycle(initialValue = emptyList())
     val c = LocalNotelyColors.current
     val bytes = notes.sumOf { it.documentJson.length.toLong() }
     val attachments = notes.sumOf { n -> n.documentJson.windowed(10, 1).count { it.contains("ATTACHMENT") } }

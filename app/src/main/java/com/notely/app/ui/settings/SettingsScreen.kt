@@ -34,22 +34,22 @@ import java.io.File
 fun SettingsScreen(app: NotelyApp) {
     val c = LocalNotelyColors.current
     val scope = rememberCoroutineScope()
-    val mode by app.prefs.themeMode.collectAsStateWithLifecycle(initial = ThemeMode.SYSTEM)
-    val accent by app.prefs.accent.collectAsStateWithLifecycle(initial = Accent.PURPLE)
-    val wsName by app.prefs.workspaceName.collectAsStateWithLifecycle(initial = "Writer")
-    val wsIcon by app.prefs.workspaceIcon.collectAsStateWithLifecycle(initial = "W")
-    val autosave by app.prefs.autosave.collectAsStateWithLifecycle(initial = true)
-    val spell by app.prefs.spellcheck.collectAsStateWithLifecycle(initial = true)
-    val font by app.prefs.defaultFont.collectAsStateWithLifecycle(initial = "Default")
-    val fontSize by app.prefs.defaultFontSize.collectAsStateWithLifecycle(initial = 16)
-    val lineSpacing by app.prefs.defaultLineSpacing.collectAsStateWithLifecycle(initial = 1.55f)
-    val appLock by app.prefs.appLock.collectAsStateWithLifecycle(initial = false)
-    val pinHash by app.prefs.pinHash.collectAsStateWithLifecycle(initial = "")
-    val noteCount by app.notes.countActive().collectAsStateWithLifecycle(initial = 0)
-    val nbCount by app.notebooks.countActive().collectAsStateWithLifecycle(initial = 0)
-    val aiUrl by app.prefs.aiBaseUrl.collectAsStateWithLifecycle(initial = "")
-    val aiModel by app.prefs.aiModel.collectAsStateWithLifecycle(initial = "")
-    val aiEnabled by app.prefs.aiEnabled.collectAsStateWithLifecycle(initial = false)
+    val mode by app.prefs.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
+    val accent by app.prefs.accent.collectAsStateWithLifecycle(initialValue = Accent.PURPLE)
+    val wsName by app.prefs.workspaceName.collectAsStateWithLifecycle(initialValue = "Writer")
+    val wsIcon by app.prefs.workspaceIcon.collectAsStateWithLifecycle(initialValue = "W")
+    val autosave by app.prefs.autosave.collectAsStateWithLifecycle(initialValue = true)
+    val spell by app.prefs.spellcheck.collectAsStateWithLifecycle(initialValue = true)
+    val font by app.prefs.defaultFont.collectAsStateWithLifecycle(initialValue = "Default")
+    val fontSize by app.prefs.defaultFontSize.collectAsStateWithLifecycle(initialValue = 16)
+    val lineSpacing by app.prefs.defaultLineSpacing.collectAsStateWithLifecycle(initialValue = 1.55f)
+    val appLock by app.prefs.appLock.collectAsStateWithLifecycle(initialValue = false)
+    val pinHash by app.prefs.pinHash.collectAsStateWithLifecycle(initialValue = "")
+    val noteCount by app.notes.countActive().collectAsStateWithLifecycle(initialValue = 0)
+    val nbCount by app.notebooks.countActive().collectAsStateWithLifecycle(initialValue = 0)
+    val aiUrl by app.prefs.aiBaseUrl.collectAsStateWithLifecycle(initialValue = "")
+    val aiModel by app.prefs.aiModel.collectAsStateWithLifecycle(initialValue = "")
+    val aiEnabled by app.prefs.aiEnabled.collectAsStateWithLifecycle(initialValue = false)
 
     var editWs by remember { mutableStateOf(false) }
     var pinDraft by remember { mutableStateOf("") }
@@ -389,9 +389,9 @@ fun SettingsScreen(app: NotelyApp) {
         LocalModelsDialog(app, onDismiss = { showModels = false })
     }
     if (showLibrary) {
-        val templates by app.templates.observeAll().collectAsStateWithLifecycle(initial = emptyList())
-        val trashed by app.notes.observeTrashed().collectAsStateWithLifecycle(initial = emptyList())
-        val archived by app.notes.observeArchived().collectAsStateWithLifecycle(initial = emptyList())
+        val templates by app.templates.observeAll().collectAsStateWithLifecycle(initialValue = emptyList())
+        val trashed by app.notes.observeTrashed().collectAsStateWithLifecycle(initialValue = emptyList())
+        val archived by app.notes.observeArchived().collectAsStateWithLifecycle(initialValue = emptyList())
         AlertDialog(
             onDismissRequest = { showLibrary = false },
             title = { Text("Library") },

@@ -83,11 +83,11 @@ fun EditorScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
-    val autosave by app.prefs.autosave.collectAsStateWithLifecycle(initial = true)
-    val spellcheck by app.prefs.spellcheck.collectAsStateWithLifecycle(initial = true)
+    val autosave by app.prefs.autosave.collectAsStateWithLifecycle(initialValue = true)
+    val spellcheck by app.prefs.spellcheck.collectAsStateWithLifecycle(initialValue = true)
     val noteFlow = remember(noteId) { app.notes.observeById(noteId) }
-    val note by noteFlow.collectAsStateWithLifecycle(initial = null)
-    val notebooks by app.notebooks.observeActive().collectAsStateWithLifecycle(initial = emptyList())
+    val note by noteFlow.collectAsStateWithLifecycle(initialValue = null)
+    val notebooks by app.notebooks.observeActive().collectAsStateWithLifecycle(initialValue = emptyList())
 
     var blocks by remember { mutableStateOf(listOf(DocumentBlock())) }
     var pageSetup by remember { mutableStateOf(PageSetup()) }

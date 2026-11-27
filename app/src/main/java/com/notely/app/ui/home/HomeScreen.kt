@@ -41,11 +41,11 @@ import kotlinx.coroutines.launch
 fun HomeScreen(app: NotelyApp, onOpenNote: (Long) -> Unit) {
     val c = LocalNotelyColors.current
     val scope = rememberCoroutineScope()
-    val notebooks by app.notebooks.observeActive().collectAsStateWithLifecycle(initial = emptyList())
-    val recent by app.notes.observeRecent(30).collectAsStateWithLifecycle(initial = emptyList())
-    val workspace by app.prefs.workspaceName.collectAsStateWithLifecycle(initial = "Writer")
-    val workspaceIcon by app.prefs.workspaceIcon.collectAsStateWithLifecycle(initial = "W")
-    val recentSearches by app.prefs.recentSearches.collectAsStateWithLifecycle(initial = emptyList())
+    val notebooks by app.notebooks.observeActive().collectAsStateWithLifecycle(initialValue = emptyList())
+    val recent by app.notes.observeRecent(30).collectAsStateWithLifecycle(initialValue = emptyList())
+    val workspace by app.prefs.workspaceName.collectAsStateWithLifecycle(initialValue = "Writer")
+    val workspaceIcon by app.prefs.workspaceIcon.collectAsStateWithLifecycle(initialValue = "W")
+    val recentSearches by app.prefs.recentSearches.collectAsStateWithLifecycle(initialValue = emptyList())
 
     var query by remember { mutableStateOf("") }
     var debounced by remember { mutableStateOf("") }
@@ -54,7 +54,7 @@ fun HomeScreen(app: NotelyApp, onOpenNote: (Long) -> Unit) {
     var showNotebookPicker by remember { mutableStateOf(false) }
     var pickerTarget by remember { mutableStateOf<Long?>(null) }
 
-    val searchResults by app.notes.search(debounced).collectAsStateWithLifecycle(initial = emptyList())
+    val searchResults by app.notes.search(debounced).collectAsStateWithLifecycle(initialValue = emptyList())
     val searching = debounced.isNotBlank()
 
     LaunchedEffect(query) {
@@ -319,7 +319,7 @@ private fun buildAnnotatedPreview(text: String, idx: Int, len: Int, highlight: a
 private fun NotebookSwitcherSheet(app: NotelyApp, onDismiss: () -> Unit, onOpen: (Long?) -> Unit) {
     val c = LocalNotelyColors.current
     val scope = rememberCoroutineScope()
-    val notebooks by app.notebooks.observeActive().collectAsStateWithLifecycle(initial = emptyList())
+    val notebooks by app.notebooks.observeActive().collectAsStateWithLifecycle(initialValue = emptyList())
     var newName by remember { mutableStateOf("") }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = c.surface) {
         Column(Modifier.fillMaxWidth().padding(20.dp)) {
@@ -366,8 +366,8 @@ private fun NotebookSwitcherSheet(app: NotelyApp, onDismiss: () -> Unit, onOpen:
 private fun CreateSheet(app: NotelyApp, initialNotebook: Long?, onDismiss: () -> Unit, onCreated: (Long) -> Unit) {
     val c = LocalNotelyColors.current
     val scope = rememberCoroutineScope()
-    val notebooks by app.notebooks.observeActive().collectAsStateWithLifecycle(initial = emptyList())
-    val templates by app.templates.observeAll().collectAsStateWithLifecycle(initial = emptyList())
+    val notebooks by app.notebooks.observeActive().collectAsStateWithLifecycle(initialValue = emptyList())
+    val templates by app.templates.observeAll().collectAsStateWithLifecycle(initialValue = emptyList())
     var title by remember { mutableStateOf("") }
     var notebookId by remember(initialNotebook, notebooks) {
         mutableStateOf(initialNotebook ?: notebooks.firstOrNull()?.id)

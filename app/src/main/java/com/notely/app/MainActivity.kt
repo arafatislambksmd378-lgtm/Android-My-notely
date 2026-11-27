@@ -44,10 +44,10 @@ class MainActivity : ComponentActivity() {
         consumeReminderIntent(intent)
 
         setContent {
-            val mode by app.prefs.themeMode.collectAsStateWithLifecycle(initial = ThemeMode.SYSTEM)
-            val accent by app.prefs.accent.collectAsStateWithLifecycle(initial = Accent.PURPLE)
-            val lockEnabled by app.prefs.appLock.collectAsStateWithLifecycle(initial = false)
-            val pinHash by app.prefs.pinHash.collectAsStateWithLifecycle(initial = "")
+            val mode by app.prefs.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
+            val accent by app.prefs.accent.collectAsStateWithLifecycle(initialValue = Accent.PURPLE)
+            val lockEnabled by app.prefs.appLock.collectAsStateWithLifecycle(initialValue = false)
+            val pinHash by app.prefs.pinHash.collectAsStateWithLifecycle(initialValue = "")
 
             var unlocked by remember { mutableStateOf(false) }
             val lifecycle = LocalLifecycleOwner.current

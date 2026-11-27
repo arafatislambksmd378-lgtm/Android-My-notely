@@ -74,8 +74,8 @@ fun NoteOptionsSheet(
     val c = LocalNotelyColors.current
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val note by app.notes.observeById(noteId).collectAsStateWithLifecycle(initial = null)
-    val notebooks by app.notebooks.observeActive().collectAsStateWithLifecycle(initial = emptyList())
+    val note by app.notes.observeById(noteId).collectAsStateWithLifecycle(initialValue = null)
+    val notebooks by app.notebooks.observeActive().collectAsStateWithLifecycle(initialValue = emptyList())
     var showMove by remember { mutableStateOf(false) }
     var showReminder by remember { mutableStateOf(false) }
 
@@ -453,7 +453,7 @@ fun FindReplaceSheet(
 fun CommentsSheet(app: NotelyApp, noteId: Long, onDismiss: () -> Unit) {
     val c = LocalNotelyColors.current
     val scope = rememberCoroutineScope()
-    val comments by app.comments.observeForNote(noteId).collectAsStateWithLifecycle(initial = emptyList())
+    val comments by app.comments.observeForNote(noteId).collectAsStateWithLifecycle(initialValue = emptyList())
     var draft by remember { mutableStateOf("") }
     var editingId by remember { mutableStateOf<Long?>(null) }
     var editText by remember { mutableStateOf("") }
@@ -536,7 +536,7 @@ fun BookmarksSheet(
 ) {
     val c = LocalNotelyColors.current
     val scope = rememberCoroutineScope()
-    val bookmarks by app.bookmarks.observeForNote(noteId).collectAsStateWithLifecycle(initial = emptyList())
+    val bookmarks by app.bookmarks.observeForNote(noteId).collectAsStateWithLifecycle(initialValue = emptyList())
     var name by remember { mutableStateOf("") }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = c.surface) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).verticalScroll(rememberScrollState())) {
@@ -586,8 +586,8 @@ fun BookmarksSheet(
 fun TagsSheet(app: NotelyApp, noteId: Long, onDismiss: () -> Unit) {
     val c = LocalNotelyColors.current
     val scope = rememberCoroutineScope()
-    val noteTags by app.tags.tagsForNote(noteId).collectAsStateWithLifecycle(initial = emptyList())
-    val allTags by app.tags.observeAll().collectAsStateWithLifecycle(initial = emptyList())
+    val noteTags by app.tags.tagsForNote(noteId).collectAsStateWithLifecycle(initialValue = emptyList())
+    val allTags by app.tags.observeAll().collectAsStateWithLifecycle(initialValue = emptyList())
     var draft by remember { mutableStateOf("") }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = c.surface) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp).verticalScroll(rememberScrollState())) {
@@ -769,7 +769,7 @@ fun VersionsSheet(
 ) {
     val c = LocalNotelyColors.current
     val scope = rememberCoroutineScope()
-    val versions by app.versions.observeForNote(noteId).collectAsStateWithLifecycle(initial = emptyList())
+    val versions by app.versions.observeForNote(noteId).collectAsStateWithLifecycle(initialValue = emptyList())
     var preview by remember { mutableStateOf<String?>(null) }
     var confirmRestore by remember { mutableStateOf<Pair<Long, String>?>(null) }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = c.surface) {
@@ -855,9 +855,9 @@ fun AiSheet(
 ) {
     val c = LocalNotelyColors.current
     val scope = rememberCoroutineScope()
-    val enabled by app.prefs.aiEnabled.collectAsStateWithLifecycle(initial = false)
-    val baseUrl by app.prefs.aiBaseUrl.collectAsStateWithLifecycle(initial = "")
-    val model by app.prefs.aiModel.collectAsStateWithLifecycle(initial = "")
+    val enabled by app.prefs.aiEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val baseUrl by app.prefs.aiBaseUrl.collectAsStateWithLifecycle(initialValue = "")
+    val model by app.prefs.aiModel.collectAsStateWithLifecycle(initialValue = "")
     var action by remember { mutableStateOf(AiAssistant.Action.REWRITE) }
     var input by remember(selectedText) { mutableStateOf(selectedText.take(4000)) }
     var output by remember { mutableStateOf("") }
@@ -958,7 +958,7 @@ fun AiSheet(
 fun TemplatesSheet(app: NotelyApp, onDismiss: () -> Unit, onUse: (String) -> Unit, onSaveCurrent: () -> Unit) {
     val c = LocalNotelyColors.current
     val scope = rememberCoroutineScope()
-    val templates by app.templates.observeAll().collectAsStateWithLifecycle(initial = emptyList())
+    val templates by app.templates.observeAll().collectAsStateWithLifecycle(initialValue = emptyList())
     var saved by remember { mutableStateOf("") }
     var previewJson by remember { mutableStateOf<String?>(null) }
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = c.surface) {
