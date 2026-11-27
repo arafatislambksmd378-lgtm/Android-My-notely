@@ -1,14 +1,14 @@
 # Notely — Delivery Report
 
 Branch: `arena/20d1dbca-android-my-notely` (from `0858c47`)
-Final verified run: GitHub Actions **46032882064 — both jobs success**.
+Final verified run: GitHub Actions **46034212018 — both jobs success** (release `ci-build-40`).
 
 ## A. Installable artifacts
 
 | Artifact | Size | SHA-256 | Link |
 |---|---|---|---|
-| `app-debug.apk` | 62 860 797 B (60 MB) | `4581af46a64ee82b61d273d5c448db05a6e90e90ed9b5329ee1a311f1d4a758d` | https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/latest/download/app-debug.apk |
-| `app-release-unsigned.apk` | 45 457 709 B (44 MB) | `307908839e37a69f7312743843fd290c9c6f63044ba1fdf735d5c181adcfaac2` | https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/latest/download/app-release-unsigned.apk |
+| `app-debug.apk` | 62 860 797 B (60 MB) | `d7f317ceb5f401e8a427854d01bb103e73e088fbadc3a865735d46907add93bc` | https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/latest/download/app-debug.apk |
+| `app-release-unsigned.apk` | 45 457 709 B (44 MB) | `875af56289937f55bd9770714ee886d053a001cc0cfb6639cbf16cbfa974be14` | https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/latest/download/app-release-unsigned.apk |
 
 The debug APK was installed and launched on an Android 14 (API 34) x86_64 emulator as part of CI.
 The release APK is R8-minified and resource-shrunk but **unsigned**; it must be signed before it can be
