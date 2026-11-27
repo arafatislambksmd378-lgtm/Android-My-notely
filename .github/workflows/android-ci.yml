@@ -86,6 +86,11 @@ jobs:
           fi
           if [ $rc -ne 0 ]; then
             echo "::error title=Tests::unit tests failed (exit $rc)"
+            # Last meaningful lines of the Gradle output, as an annotation.
+            tail -25 /tmp/test.log | sed 's/\r//g' | tr '\n' '~' | cut -c1-1200 | \
+              while IFS= read -r summary; do
+                echo "::error title=Gradle output::${summary//\~/ | }"
+              done
           fi
           exit $rc
 
