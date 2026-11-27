@@ -81,25 +81,11 @@ jobs:
           ./gradlew :app:testDebugUnitTest --console=plain > /tmp/test.log 2>&1
           rc=$?
           tail -120 /tmp/test.log
-          # Surface each failing test as an annotation (raw logs are unreachable
-          # from some environments, annotations are not).
-          grep -E "^(\S+ > .* (FAILED|PASSED))$|FAILED$" /tmp/test.log | head -40 | while IFS= read -r line; do
-            echo "::error title=Test::${line}"
-          done
           if [ -d app/build/test-results/testDebugUnitTest ]; then
-            python3 - <<'PYEOF'
-import glob, xml.etree.ElementTree as ET, sys
-for f in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
-    try:
-        root = ET.parse(f).getroot()
-    except Exception:
-        continue
-    for case in root.iter('testcase'):
-        for fail in list(case.findall('failure')) + list(case.findall('error')):
-            msg = (fail.get('message') or fail.text or '').strip().splitlines()
-            head = msg[0][:300] if msg else 'failure'
-            print(f"::error title={case.get('classname','?')}.{case.get('name','?')}::{head}")
-PYEOF
+            python3 .github/scripts/report_test_failures.py app/build/test-results/testDebugUnitTest
+          fi
+          if [ $rc -ne 0 ]; then
+            echo "::error title=Tests::unit tests failed (exit $rc)"
           fi
           exit $rc
 
