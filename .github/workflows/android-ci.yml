@@ -217,20 +217,22 @@ jobs:
           INFO=/tmp/boot.md
           echo "### Emulator boot" > "$INFO"
           echo '```' >> "$INFO"
+          set +e
           echo "sdkroot=$ANDROID_SDK_ROOT"
+          echo "kvm: $(ls -l /dev/kvm 2>&1)"
+          echo "system-images: $(ls "$ANDROID_SDK_ROOT/system-images/android-34/default" 2>&1)"
           echo "which adb: $(command -v adb || echo MISSING)"
           echo "which emulator: $(command -v emulator || echo MISSING)"
           echo no | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" create avd \
-            -n notely -k "system-images;android-34;default;x86_64" -d pixel_5 --force >> "$INFO" 2>&1
-          echo "avd created rc=$?" >> "$INFO"
+            -n notely -k "system-images;android-34;default;x86_64" -d pixel_5 --force >> "$INFO" 2>&1 || \
+            echo "avdmanager create failed" >> "$INFO"
           ls "$HOME/.android/avd" >> "$INFO" 2>&1 || true
           nohup "$ANDROID_SDK_ROOT/emulator/emulator" -avd notely -no-window -no-audio \
             -no-boot-anim -gpu swiftshader_indirect -no-snapshot -accel auto \
             > /tmp/emulator.log 2>&1 &
           EPID=$!
           echo "emulator pid=$EPID" >> "$INFO"
-          timeout 240 adb wait-for-device >> "$INFO" 2>&1
-          echo "adb wait rc=$?" >> "$INFO"
+          timeout 240 adb wait-for-device >> "$INFO" 2>&1 || echo "adb wait timed out" >> "$INFO"
           BOOTED=0
           for i in $(seq 1 90); do
             booted=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
@@ -243,6 +245,11 @@ jobs:
             tail -40 /tmp/emulator.log >> "$INFO" 2>&1 || true
           fi
           adb devices >> "$INFO" 2>&1 || true
+          echo '```' >> "$INFO"
+          echo "" >> "$INFO"
+          echo "### emulator log (last 60)" >> "$INFO"
+          echo '```' >> "$INFO"
+          tail -60 /tmp/emulator.log >> "$INFO" 2>&1 || true
           echo '```' >> "$INFO"
           cat "$INFO"
           {
