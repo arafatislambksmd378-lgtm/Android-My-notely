@@ -7,6 +7,8 @@ Premium Soft Claymorphism + Material 3, built with Kotlin + Jetpack Compose + Ro
 
 ## Build & install (APK)
 
+Delivery report (artifacts, hashes, feature matrix, status): [`docs/DELIVERY.md`](docs/DELIVERY.md).
+
 > **Status: built, tested and installed.** The APK in this repository was produced by GitHub Actions and
 > installed and launched on an Android 14 (API 34) emulator; see `docs/VERIFICATION.md` for the measured
 > results. Prebuilt artifacts:
