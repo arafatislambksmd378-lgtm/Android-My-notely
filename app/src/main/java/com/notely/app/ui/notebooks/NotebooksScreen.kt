@@ -47,13 +47,15 @@ fun NotebooksScreen(app: NotelyApp, onOpenNote: (Long) -> Unit) {
     val trashedNotes by app.notes.observeTrashed().collectAsState(initial = emptyList())
     val trashedNotebooks by app.notebooks.observeTrashed().collectAsState(initial = emptyList())
     val tags by app.tags.observeAll().collectAsState(initial = emptyList())
-    val taggedNoteIds by (selectedTag?.let { app.tags.notesForTag(it) }
-        ?: kotlinx.coroutines.flow.flowOf(emptyList())).collectAsState(initial = emptyList())
+    // Declared before the flow below so the tag filter can be derived from it.
+    var selectedTag by remember { mutableStateOf<Long?>(null) }
+    val taggedNoteIds by remember(selectedTag) {
+        selectedTag?.let { app.tags.notesForTag(it) } ?: kotlinx.coroutines.flow.flowOf(emptyList())
+    }.collectAsState(initial = emptyList())
 
     var selectedNb by remember { mutableStateOf<Long?>(null) }
     var sort by remember { mutableStateOf(SortMode.RECENT) }
     var filter by remember { mutableStateOf(FilterMode.ALL) }
-    var selectedTag by remember { mutableStateOf<Long?>(null) }
     var bulkMode by remember { mutableStateOf(false) }
     var bulkSelected by remember { mutableStateOf(setOf<Long>()) }
     var showEditSheet by remember { mutableStateOf<NotebookEntity?>(null) }

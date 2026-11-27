@@ -16,7 +16,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -305,7 +307,7 @@ private fun buildAnnotatedPreview(text: String, idx: Int, len: Int, highlight: a
     androidx.compose.ui.text.buildAnnotatedString {
         val end = (idx + len).coerceAtMost(text.length)
         append(text.substring(0, idx))
-        androidx.compose.ui.text.withStyle(androidx.compose.ui.text.SpanStyle(color = highlight, fontWeight = FontWeight.Bold)) {
+        withStyle(androidx.compose.ui.text.SpanStyle(color = highlight, fontWeight = FontWeight.Bold)) {
             append(text.substring(idx, end))
         }
         append(text.substring(end))
