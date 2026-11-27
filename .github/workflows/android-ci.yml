@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write   # needed to attach APKs to a CI release
 
 jobs:
   build:
@@ -113,6 +113,43 @@ jobs:
           find app/build/outputs -name "*.apk" -exec cp --parents {} ci-out/ \; 2>/dev/null || true
           find app/build/reports -maxdepth 3 -type f -name "*.html" -exec cp --parents {} ci-out/ \; 2>/dev/null || true
           ls -lR ci-out | head -50
+
+      - name: Report APK facts
+        if: always()
+        run: |
+          for apk in $(find app/build/outputs -name "*.apk" 2>/dev/null); do
+            size=$(du -h "$apk" | cut -f1)
+            sha=$(sha256sum "$apk" | cut -d' ' -f1)
+            echo "::notice title=APK ${apk##*/}::size $size sha256 $sha"
+          done
+          # Test totals, so the run itself states how many assertions passed.
+          python3 - <<'PYEOF'
+          import glob, xml.etree.ElementTree as ET
+          total = failures = skipped = 0
+          for f in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              try:
+                  r = ET.parse(f).getroot()
+              except Exception:
+                  continue
+              total += int(r.get('tests', 0)); failures += int(r.get('failures', 0)) + int(r.get('errors', 0))
+              skipped += int(r.get('skipped', 0))
+          if total:
+              print(f"::notice title=Unit tests::{total} run, {failures} failed, {skipped} skipped")
+          PYEOF
+
+      - name: Publish APK to a GitHub Release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG="ci-build-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" \
+            --title "Notely build ${GITHUB_RUN_NUMBER}" \
+            --notes "Automated build of ${GITHUB_SHA}.
+          * debug APK: installable directly
+          * release APK: unsigned (minified), provided for size/verification" \
+            $(find app/build/outputs -name "*.apk")
 
       - name: Upload build artifacts
         if: always()
