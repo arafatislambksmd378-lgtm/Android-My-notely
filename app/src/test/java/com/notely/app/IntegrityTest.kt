@@ -25,7 +25,7 @@ class IntegrityTest {
         val a = Security.hashPin("1234")
         val b = Security.hashPin("1234")
         assertNotEquals("the same PIN must not produce the same hash", a, b)
-        assertTrue(a.startsWith("pbkdf2$"))
+        assertTrue(a.startsWith("pbkdf2\$"))
         assertTrue(Security.verifyPin("1234", a))
         assertTrue(Security.verifyPin("1234", b))
         assertFalse(Security.verifyPin("1235", a))
@@ -44,8 +44,8 @@ class IntegrityTest {
 
     @Test
     fun corruptStoredHashNeverUnlocks() {
-        assertFalse(Security.verifyPin("1234", "pbkdf2$notanumber$abc$def"))
-        assertFalse(Security.verifyPin("1234", "pbkdf2$1000$!!!$!!!"))
+        assertFalse(Security.verifyPin("1234", "pbkdf2\$notanumber\$abc\$def"))
+        assertFalse(Security.verifyPin("1234", "pbkdf2\$1000\$!!!\$!!!"))
         assertFalse(Security.verifyPin("1234", ""))
     }
 
