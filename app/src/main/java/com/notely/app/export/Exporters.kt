@@ -184,10 +184,17 @@ object Exporters {
         }
 
     // ---------- Markdown ----------
-    fun toMarkdown(blocks: List<DocumentBlock>): String =
-        blocks.joinToString("\n\n") { b ->
+    fun toMarkdown(blocks: List<DocumentBlock>): String {
+        // User text must not be able to inject Markdown syntax (a literal "*" in a
+        // title would otherwise italicise the rest of the page).
+        fun mdEsc(s: String): String = s
+            .replace("\\", "\\\\")
+            .replace("*", "\\*").replace("_", "\\_").replace("`", "\\`")
+            .replace("#", "\\#").replace("|", "\\|").replace("[", "\\[").replace("]", "\\]")
+
+        return blocks.joinToString("\n\n") { b ->
             val text = b.runs.joinToString("") { r ->
-                var t = r.text
+                var t = mdEsc(r.text)
                 if (r.bold) t = "**$t**"
                 if (r.italic) t = "*$t*"
                 if (r.underline) t = "<u>$t</u>"
@@ -202,7 +209,9 @@ object Exporters {
                 BlockType.CHECKLIST -> (if (b.checked) "- [x] " else "- [ ] ") + text
                 BlockType.TABLE -> b.table?.let { t ->
                     val lines = (0 until t.rows).map { r ->
-                        "| " + (0 until t.cols).joinToString(" | ") { c -> t.cells.getOrNull(r * t.cols + c) ?: "" } + " |"
+                        "| " + (0 until t.cols).joinToString(" | ") { c ->
+                            mdEsc(t.cells.getOrNull(r * t.cols + c) ?: "")
+                        } + " |"
                     }
                     if (t.headerRow && lines.isNotEmpty())
                         lines.first() + "\n|" + List(t.cols) { " --- " }.joinToString("|") + "|\n" +
@@ -220,11 +229,19 @@ object Exporters {
                         "- ${ch.labels.getOrNull(i) ?: ""}: ${ch.values.getOrNull(i) ?: 0.0}"
                     }
                 } ?: ""
-                BlockType.TOC -> "<!-- table of contents -->"
+                // A real, clickable table of contents (previously a bare HTML comment).
+                BlockType.TOC -> buildString {
+                    append("**Contents**\n\n")
+                    DocumentSerializer.headings(blocks).forEach { (level, title) ->
+                        append("  ".repeat((level - 1).coerceIn(0, 5)))
+                        append("- ").append(mdEsc(title)).append('\n')
+                    }
+                }
                 BlockType.TEXTBOX -> "> $text"
                 else -> text
             }
         }
+    }
 
     // ---------- HTML ----------
     fun toHtml(blocks: List<DocumentBlock>, pageSetup: PageSetup): String {
@@ -627,9 +644,8 @@ img{max-width:100%;}table{margin:8px 0;}p{margin:6px 0;}</style></head>
                 }
             }
         }
-        page?.let { doc.finishPage(it) }
-        // The final page must be finished *before* writeTo(); finishing it afterwards
-        // throws IllegalStateException("document is closed!") and truncates the file.
+        // Finish the final page exactly once, before writeTo(). Finishing twice throws
+        // IllegalStateException("document is closed!") and truncates the file.
         page?.let { doc.finishPage(it) }
         page = null
         val out = ByteArrayOutputStream()

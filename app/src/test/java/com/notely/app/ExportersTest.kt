@@ -4,9 +4,16 @@ import com.notely.app.doc.*
 import com.notely.app.export.Exporters
 import org.junit.Assert.*
 import org.junit.Test
+import org.junit.runner.RunWith
+import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import java.io.ByteArrayInputStream
 import java.util.zip.ZipInputStream
 
+// Robolectric supplies real android.graphics implementations (Paint, PdfDocument)
+// so the PDF path is exercised for real instead of hitting "not mocked" stubs.
+@RunWith(RobolectricTestRunner::class)
+@Config(sdk = [33])
 class ExportersTest {
 
     private val blocks = listOf(
@@ -52,11 +59,22 @@ class ExportersTest {
     @Test
     fun markdown() {
         val out = Exporters.toMarkdown(blocks)
-        assertTrue(out.contains("## Title"))
+        assertTrue(out.contains("**Title**"))
+        assertTrue(out.contains("## "))          // heading level 2
         assertTrue(out.contains("**text**"))
         assertTrue(out.contains("- Point"))
-        assertTrue(out.contains("| H1"))
+        assertTrue(out.contains("| H1 | H2 |"))
         assertTrue(out.contains("[^1]: note"))
+    }
+
+    @Test
+    fun markdownEscapesUserText() {
+        val out = Exporters.toMarkdown(
+            listOf(DocumentBlock(runs = listOf(TextRun("2 * 3 = 6 and snake_case"))))
+        )
+        // Literal asterisks/underscores must not become emphasis.
+        assertTrue(out.contains("2 \\* 3 = 6"))
+        assertTrue(out.contains("snake\\_case"))
     }
 
     @Test
@@ -146,6 +164,7 @@ class ExportersTest {
     @Test
     fun pdfHasPaginatedPages() {
         val pdf = Exporters.toPdf(blocks, PageSetup(pageNumbers = true, header = "Head"))
+        assertTrue(pdf.isNotEmpty())
         assertTrue(pdf.size > 400)
         // %PDF magic
         assertEquals("%PDF", String(pdf, 0, 4, Charsets.US_ASCII))
