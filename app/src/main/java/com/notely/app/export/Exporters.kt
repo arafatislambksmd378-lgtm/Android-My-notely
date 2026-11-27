@@ -393,6 +393,7 @@ img{max-width:100%;}table{margin:8px 0;}p{margin:6px 0;}</style></head>
 
         var pageNum = 0
         var page: PdfDocument.Page? = null
+        var hasLivePage = false
         var canvas: Canvas? = null
         var y = 0f
         var firstBodyPage = true
@@ -432,12 +433,15 @@ img{max-width:100%;}table{margin:8px 0;}p{margin:6px 0;}</style></head>
 
         fun startPage() {
             page?.let { doc.finishPage(it) }
+            page = null
+            hasLivePage = false
             pageNum++
             val info = PdfDocument.PageInfo.Builder(pageW, pageH, pageNum).create()
             val p = doc.startPage(info)
             val c = p.canvas
             c.drawColor(pageSetup.pageColorArgb)
             page = p
+            hasLivePage = true
             canvas = c
             watermarkAndBorder(c)
             y = mt.toFloat()
@@ -446,9 +450,22 @@ img{max-width:100%;}table{margin:8px 0;}p{margin:6px 0;}</style></head>
 
         fun newPage() = startPage()
 
+        /**
+         * Guarantees a live page. Previously `ensureSpace` could run right after the
+         * document had been closed for writing, or request a page at y==top and
+         * immediately ask for another — both produced a second finishPage() on a
+         * finished page and threw IllegalStateException("document is closed!").
+         */
         fun ensureSpace(needed: Float) {
-            if (y + needed > pageH - mb) newPage()
+            if (page == null || !hasLivePage) startPage()
+            if (y + wanted(needed) > pageH - mb) {
+                startPage()
+                // A block taller than the text area is clamped rather than looping.
+                y = mt.toFloat()
+            }
         }
+
+        fun wanted(needed: Float): Float = needed.coerceAtMost((pageH - mt - mb).toFloat())
 
         fun drawWrapped(text: String, p: Paint, lineH: Float, indent: Float = 0f) {
             if (text.isEmpty()) { y += lineH; return }
@@ -507,7 +524,11 @@ img{max-width:100%;}table{margin:8px 0;}p{margin:6px 0;}</style></head>
                     canvas?.drawLine(ml.toFloat(), y, (pageW - mr).toFloat(), y, linePaint)
                     y += 16f
                 }
-                BlockType.PAGE_BREAK -> newPage()
+                BlockType.PAGE_BREAK -> {
+                    // Defer: only break when more content follows, so the document
+                    // never ends with a blank page.
+                    if (blocks.lastOrNull() !== b) newPage()
+                }
                 BlockType.FOOTNOTE -> {
                     ensureSpace(20f)
                     drawWrapped("[${b.footnoteRef}] ${b.footnoteText}", small, 16f)
