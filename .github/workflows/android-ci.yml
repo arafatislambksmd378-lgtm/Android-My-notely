@@ -14,7 +14,8 @@ concurrency:
   cancel-in-progress: true
 
 permissions:
-  contents: write   # needed to attach APKs to a CI release
+  contents: write   # attach APKs to a CI release
+  issues: write     # post device-run reports to the tracking issue
 
 jobs:
   build:
@@ -209,65 +210,99 @@ jobs:
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --console=plain
 
-      - name: Run instrumented tests and launch the app
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 34
-          target: default
-          arch: x86_64
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: |
-            set -x
-            note() { echo "::notice title=Device stage::$1"; }
-            APK=app/build/outputs/apk/debug/app-debug.apk
-            adb devices
+      - name: Install and launch the app, then run instrumented tests
+        id: device
+        run: |
+          set -o pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          REPORT=/tmp/report.md
+          stage=start
+          fail=0
+          echo "## Device run ${{ github.run_number }} (${{ github.sha }})" > "$REPORT"
+          echo "" >> "$REPORT"
 
-            note "install"
-            if ! adb install -r -t "$APK"; then
-              echo "::error title=Device::adb install failed"
-              exit 1
-            fi
+          adb wait-for-device
+          echo "- adb devices: \`\`\`$(adb devices | tail -n +2 | tr '\n' ';')\`\`\`" >> "$REPORT"
 
-            note "launch"
+          stage=install
+          if adb install -r -t "$APK" > /tmp/install.txt 2>&1; then
+            echo "- install: OK" >> "$REPORT"
+          else
+            echo "- install: **FAILED** \`\`\`$(tail -20 /tmp/install.txt)\`\`\`" >> "$REPORT"
+            fail=1
+          fi
+
+          if [ "$fail" = "0" ]; then
+            stage=launch
             adb shell am force-stop com.notely.app.debug || true
-            adb shell am start -W -n com.notely.app.debug/com.notely.app.MainActivity \
-              | tee /tmp/start.txt || true
-            grep -E "TotalTime|Status" /tmp/start.txt || echo "::warning title=Device::no launch timing"
+            adb shell am start -W -n com.notely.app.debug/com.notely.app.MainActivity > /tmp/start.txt 2>&1 || true
+            echo "- cold start: \`\`\`$(grep -E 'Status|TotalTime|WaitTime' /tmp/start.txt | tr '\n' ';')\`\`\`" >> "$REPORT"
             sleep 8
 
-            note "resumed-activity"
-            adb shell dumpsys activity activities | grep -E "topResumedActivity|mResumedActivity" || \
-              echo "::warning title=Device::could not read the resumed activity"
+            stage=resumed
+            TOP=$(adb shell dumpsys activity activities | grep -E "topResumedActivity|mResumedActivity" | head -1 | tr -d '\r')
+            echo "- resumed activity: \`${TOP}\`" >> "$REPORT"
+            case "$TOP" in
+              *com.notely.app*MainActivity*) ;;
+              *) echo "- **unexpected foreground activity**" >> "$REPORT"; fail=1 ;;
+            esac
 
-            note "crash-check"
+            stage=crash
             if adb logcat -d -b crash | grep -q "FATAL EXCEPTION"; then
-              adb logcat -d -b crash | tail -60
-              echo "::error title=Runtime::the app crashed on launch"
+              echo "- **CRASH**" >> "$REPORT"
+              echo '```' >> "$REPORT"
+              adb logcat -d -b crash | tail -40 >> "$REPORT"
+              echo '```' >> "$REPORT"
+              fail=1
             else
-              echo "::notice title=Runtime::no crash on launch"
+              echo "- crash log: clean" >> "$REPORT"
             fi
 
-            note "screenshot"
-            adb exec-out screencap -p > /tmp/home.png || true
-            ls -l /tmp/home.png || true
+            stage=screenshot
+            adb exec-out screencap -p > /tmp/home.png 2>/dev/null || true
+            if [ -s /tmp/home.png ]; then
+              echo "- screenshot: $(stat -c%s /tmp/home.png) bytes" >> "$REPORT"
+            else
+              echo "- screenshot: unavailable" >> "$REPORT"
+            fi
 
-            note "memory"
-            adb shell dumpsys meminfo com.notely.app.debug | head -22 || true
-            ls -lh "$APK"
+            stage=memory
+            echo "- memory (PSS): \`$(adb shell dumpsys meminfo com.notely.app.debug | grep -E 'TOTAL PSS|TOTAL:' | head -2 | tr -s ' ' | tr '\n' ';')\`" >> "$REPORT"
+            echo "- apk: $(ls -lh "$APK" | awk '{print $5}')" >> "$REPORT"
 
-            note "instrumented-tests"
-            ./gradlew :app:connectedDebugAndroidTest --console=plain --info 2>&1 | tail -60
-
-      - name: Surface launch timing and crashes
-        if: always()
-        run: |
-          if [ -f /tmp/start.txt ]; then
-            grep -E "TotalTime|WaitTime|Status" /tmp/start.txt | while IFS= read -r line; do
-              echo "::notice title=Cold start::${line}"
-            done
+            stage=instrumented
+            if timeout 1500 ./gradlew :app:connectedDebugAndroidTest --console=plain > /tmp/connected.txt 2>&1; then
+              echo "- instrumented tests: PASSED" >> "$REPORT"
+            else
+              echo "- instrumented tests: **FAILED**" >> "$REPORT"
+              echo '```' >> "$REPORT"
+              grep -E "FAILED|Tests on|tests completed|Exception|assert" /tmp/connected.txt | head -40 >> "$REPORT"
+              tail -25 /tmp/connected.txt >> "$REPORT"
+              echo '```' >> "$REPORT"
+              fail=1
+            fi
+            grep -E "Tests on|tests completed" /tmp/connected.txt | head -5 >> "$REPORT" || true
           fi
-          adb logcat -d -b crash 2>/dev/null | grep -A5 "FATAL EXCEPTION" | head -40 || true
+
+          echo "" >> "$REPORT"
+          echo "stage reaching: $stage · fail=$fail" >> "$REPORT"
+          echo "$fail" > /tmp/device_fail
+          echo "DEVICE_FAIL=$fail" >> "$GITHUB_ENV"
+          cat "$REPORT"
+
+      - name: Post the device report to the tracking issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f /tmp/report.md ]; then
+            gh issue comment 1 --repo "$GITHUB_REPOSITORY" --body-file /tmp/report.md || \
+              echo "::warning title=Device::could not post the report"
+          fi
+          if [ "$(cat /tmp/device_fail 2>/dev/null || echo 1)" != "0" ]; then
+            echo "::error title=Device::a device stage failed; see issue #1 for the report"
+            exit 1
+          fi
 
       - name: Upload device artifacts
         if: always()
