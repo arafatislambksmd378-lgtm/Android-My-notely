@@ -59,8 +59,21 @@ jobs:
           java -version
           ./gradlew --version
 
+      # Compiler output is re-emitted as workflow annotations so failures are
+      # readable even from environments that cannot download raw job logs.
       - name: Compile Kotlin (debug)
-        run: ./gradlew :app:compileDebugKotlin --stacktrace
+        run: |
+          set +e
+          ./gradlew :app:compileDebugKotlin --console=plain > /tmp/compile.log 2>&1
+          rc=$?
+          tail -200 /tmp/compile.log
+          grep -E "^e: |^error:" /tmp/compile.log | head -60 | while IFS= read -r line; do
+            echo "::error title=Kotlin::${line}"
+          done
+          if [ $rc -ne 0 ]; then
+            echo "::error title=Build::compileDebugKotlin failed (exit $rc)"
+          fi
+          exit $rc
 
       - name: Run JVM unit tests
         run: ./gradlew :app:testDebugUnitTest --stacktrace

@@ -71,7 +71,14 @@ class PreferencesRepository(private val context: Context) {
 
     suspend fun verifyPin(pin: String): Boolean {
         val stored = kotlinx.coroutines.flow.first(pinHash)
-        return stored.isNotBlank() && stored == com.notely.app.util.Security.hashPin(pin)
+        if (stored.isBlank()) return false
+        val ok = com.notely.app.util.Security.verifyPin(pin, stored)
+        // Transparently migrate an old unsalted hash to salted PBKDF2 after a
+        // successful unlock, so no install keeps a crackable representation.
+        if (ok && com.notely.app.util.Security.isLegacyHash(stored)) {
+            setPinHash(com.notely.app.util.Security.hashPin(pin))
+        }
+        return ok
     }
 
     suspend fun setThemeMode(m: ThemeMode) = context.dataStore.edit { it[Keys.THEME] = m.name }
