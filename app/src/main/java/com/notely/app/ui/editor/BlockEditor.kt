@@ -53,6 +53,9 @@ import com.notely.app.ui.components.ColorDot
 import com.notely.app.ui.theme.CardColors
 import com.notely.app.ui.theme.LocalNotelyColors
 import com.notely.app.util.ImageOps
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.io.File
 
 /** Builds the styled AnnotatedString for a block, used by read-only previews. */
@@ -496,7 +499,7 @@ private fun DrawingBlock(block: DocumentBlock, onDelete: () -> Unit) {
 }
 
 private suspend fun withContextBitmap(path: String?, rotation: Int): Bitmap? =
-    kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    withContext(Dispatchers.IO) {
         val bmp = ImageOps.decode(path) ?: return@withContext null
         if (rotation == 0) bmp else {
             val m = android.graphics.Matrix().apply { postRotate(rotation.toFloat()) }
@@ -610,19 +613,23 @@ private fun CropDialog(block: DocumentBlock, onDismiss: () -> Unit, onChange: (S
                 if (srcPath == null) {
                     status = "Image missing"
                 } else {
-                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-                        val out = kotlinx.coroutines.runCatching {
-                            val src = ImageOps.decode(srcPath, 4000)
-                            if (src == null) {
-                                null
-                            } else {
-                                val side = (minOf(src.width, src.height) * pct / 100f).toInt().coerceAtLeast(16)
-                                val left = (src.width - side) / 2
-                                val top = (src.height - side) / 2
-                                val path = ImageOps.crop(context, srcPath, left, top, side, side)
-                                src.recycle()
-                                path
-                            }
+                    // Decode/crop on IO, then publish the result back on Main: Compose
+                    // snapshot state must not be written from a background thread.
+                    scope.launch {
+                        val out = withContext(Dispatchers.IO) {
+                            runCatching {
+                                val src = ImageOps.decode(srcPath, 4000)
+                                if (src == null) {
+                                    null
+                                } else {
+                                    val side = (minOf(src.width, src.height) * pct / 100f).toInt().coerceAtLeast(16)
+                                    val left = (src.width - side) / 2
+                                    val top = (src.height - side) / 2
+                                    val path = ImageOps.crop(context, srcPath, left, top, side, side)
+                                    src.recycle()
+                                    path
+                                }
+                            }.getOrNull()
                         }
                         if (out != null) onChange(out) else status = "Crop failed"
                     }

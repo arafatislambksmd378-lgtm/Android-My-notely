@@ -28,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
@@ -970,8 +971,6 @@ private fun StatRow(label: String, value: String) {
     }
 }
 
-/** Paginated, read-only preview (Multiple Pages). Splits on explicit page breaks first. */
-@Composable
 /**
  * Replaces the document's prose with [text] while keeping every non-text block
  * (images, tables, charts, drawings, page breaks…) where it was. The AI result
@@ -996,6 +995,7 @@ internal fun replaceTextBlocks(blocks: List<DocumentBlock>, text: String): List<
     return out.ifEmpty { listOf(DocumentBlock(runs = listOf(TextRun(text)))) }
 }
 
+/** Paginated, read-only preview (Multiple Pages). Splits on explicit page breaks first. */
 @Composable
 private fun MultiPageView(blocks: List<DocumentBlock>, pageSetup: PageSetup, aspect: Float) {
     val c = LocalNotelyColors.current

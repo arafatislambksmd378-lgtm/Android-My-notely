@@ -1104,8 +1104,9 @@ data class InsertItem(
     val onClick: () -> Unit
 )
 
+/** Row-scoped so each tile can carry `Modifier.weight(1f)` from its caller. */
 @Composable
-private fun InsertTile(item: InsertItem, onTap: () -> Unit) {
+private fun androidx.compose.foundation.layout.RowScope.InsertTile(item: InsertItem, onTap: () -> Unit) {
     val c = LocalNotelyColors.current
     Column(
         Modifier

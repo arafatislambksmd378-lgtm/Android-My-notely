@@ -22,6 +22,7 @@ import com.notely.app.ui.components.ClaySoftButton
 import com.notely.app.ui.theme.LocalNotelyColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -51,16 +52,17 @@ fun OcrSheet(onDismiss: () -> Unit, onText: (String) -> Unit) {
                 } ?: throw IllegalStateException("Could not read image")
                 val image = InputImage.fromBitmap(bitmap, 0)
                 val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
-                val text = try {
-                    kotlinx.coroutines.tasks.await(recognizer.process(image))
+                val recognized = try {
+                    recognizer.process(image).await()
                 } finally {
                     // Release the native detector; holding it leaks model resources.
                     runCatching { recognizer.close() }
                     runCatching { bitmap.recycle() }
                 }
+                val text = recognized.text
                 withContext(Dispatchers.Main) {
-                    result = text.text
-                    status = if (text.text.isBlank()) "No text found in this image." else "Recognized ${text.text.length} characters."
+                    result = text
+                    status = if (text.isBlank()) "No text found in this image." else "Recognized ${text.length} characters."
                     busy = false
                 }
             } catch (e: Exception) {
