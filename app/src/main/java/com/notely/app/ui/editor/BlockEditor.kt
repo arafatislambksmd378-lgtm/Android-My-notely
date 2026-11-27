@@ -585,7 +585,10 @@ private fun CropDialog(block: DocumentBlock, onDismiss: () -> Unit, onChange: (S
         title = { Text("Crop image") },
         text = {
             Column {
-                Text("Keep the central $pct% of the image.", fontSize = 13.sp, color = LocalNotelyColors.current.text2)
+                Text(
+                    "Keep the central ${pct.toInt()}% of the image.",
+                    fontSize = 13.sp, color = LocalNotelyColors.current.text2
+                )
                 Slider(
                     value = pct, onValueChange = { pct = it }, valueRange = 40f..100f,
                     modifier = Modifier.fillMaxWidth()
@@ -607,8 +610,8 @@ private fun CropDialog(block: DocumentBlock, onDismiss: () -> Unit, onChange: (S
                 if (srcPath == null) {
                     status = "Image missing"
                 } else {
-                    scope.launch {
-                        val out = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                    scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                        val out = kotlinx.coroutines.runCatching {
                             val src = ImageOps.decode(srcPath, 4000)
                             if (src == null) {
                                 null

@@ -482,13 +482,15 @@ fun EditorScreen(
                         contentPadding = PaddingValues(bottom = 12.dp)
                     ) {
                         itemsIndexed(blocks, key = { _, b -> b.id }) { index, block ->
-                            val alignMod = when (block.align) {
-                                1 -> Modifier.align(Alignment.CenterHorizontally)
-                                2 -> Modifier.align(Alignment.End)
-                                else -> Modifier.align(Alignment.Start)
+                            // BoxScope.alignment keeps this legal at the LazyColumn item
+                            // level (Modifier.align is only resolvable inside a Box).
+                            val boxAlign = when (block.align) {
+                                1 -> Alignment.TopCenter
+                                2 -> Alignment.TopEnd
+                                else -> Alignment.TopStart
                             }
-                            Box(Modifier.fillMaxWidth()) {
-                                Box(alignMod) {
+                            Box(Modifier.fillMaxWidth(), contentAlignment = boxAlign) {
+                                Box {
                                     BlockEditor(
                                         block = block,
                                         index = index,
@@ -994,6 +996,7 @@ internal fun replaceTextBlocks(blocks: List<DocumentBlock>, text: String): List<
     return out.ifEmpty { listOf(DocumentBlock(runs = listOf(TextRun(text)))) }
 }
 
+@Composable
 private fun MultiPageView(blocks: List<DocumentBlock>, pageSetup: PageSetup, aspect: Float) {
     val c = LocalNotelyColors.current
     val pages = remember(blocks) {
