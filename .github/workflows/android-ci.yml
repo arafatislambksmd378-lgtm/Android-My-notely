@@ -217,24 +217,40 @@ jobs:
           INFO=/tmp/boot.md
           echo "### Emulator boot" > "$INFO"
           echo '```' >> "$INFO"
+          echo "sdkroot=$ANDROID_SDK_ROOT"
+          echo "which adb: $(command -v adb || echo MISSING)"
+          echo "which emulator: $(command -v emulator || echo MISSING)"
           echo no | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" create avd \
             -n notely -k "system-images;android-34;default;x86_64" -d pixel_5 --force >> "$INFO" 2>&1
+          echo "avd created rc=$?" >> "$INFO"
+          ls "$HOME/.android/avd" >> "$INFO" 2>&1 || true
           nohup "$ANDROID_SDK_ROOT/emulator/emulator" -avd notely -no-window -no-audio \
             -no-boot-anim -gpu swiftshader_indirect -no-snapshot -accel auto \
             > /tmp/emulator.log 2>&1 &
-          echo "waiting for the device…" >> "$INFO"
-          timeout 300 adb wait-for-device >> "$INFO" 2>&1
+          EPID=$!
+          echo "emulator pid=$EPID" >> "$INFO"
+          timeout 240 adb wait-for-device >> "$INFO" 2>&1
+          echo "adb wait rc=$?" >> "$INFO"
+          BOOTED=0
           for i in $(seq 1 90); do
             booted=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
-            if [ "$booted" = "1" ]; then echo "boot completed after ~$((i*5))s" >> "$INFO"; break; fi
+            if [ "$booted" = "1" ]; then BOOTED=1; echo "boot completed after ~$((i*5))s" >> "$INFO"; break; fi
+            if ! kill -0 $EPID 2>/dev/null; then echo "emulator process exited early" >> "$INFO"; break; fi
             sleep 5
           done
-          adb devices >> "$INFO" 2>&1
+          if [ "$BOOTED" != "1" ]; then
+            echo "--- last 40 lines of the emulator log ---" >> "$INFO"
+            tail -40 /tmp/emulator.log >> "$INFO" 2>&1 || true
+          fi
+          adb devices >> "$INFO" 2>&1 || true
           echo '```' >> "$INFO"
           cat "$INFO"
-          echo "EMULATOR_INFO<<EOF" >> "$GITHUB_ENV"
-          cat "$INFO" >> "$GITHUB_ENV"
-          echo "EOF" >> "$GITHUB_ENV"
+          {
+            echo "EMULATOR_INFO<<__BOOT_EOF__"
+            cat "$INFO"
+            echo "__BOOT_EOF__"
+            echo "EMULATOR_OK=$BOOTED"
+          } >> "$GITHUB_ENV"
 
       - uses: gradle/actions/setup-gradle@v3
 
@@ -330,7 +346,10 @@ jobs:
             gh issue comment 1 --repo "$GITHUB_REPOSITORY" --body-file /tmp/report.md || \
               echo "::warning title=Device::could not post the report"
           else
-            printf '## Device run ${{ github.run_number }} (%s)\n\nNo report was produced: an earlier step failed.\n' "${{ github.sha }}" > /tmp/noreport.md
+            {
+              printf '## Device run ${{ github.run_number }} (%s)\n\nNo device report was produced.\n\n' "${{ github.sha }}"
+              printf '%s\n' "${EMULATOR_INFO:-no boot info}"
+            } > /tmp/noreport.md
             gh issue comment 1 --repo "$GITHUB_REPOSITORY" --body-file /tmp/noreport.md || true
           fi
           if [ "$(cat /tmp/device_fail 2>/dev/null || echo 1)" != "0" ]; then
