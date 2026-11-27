@@ -503,6 +503,7 @@ private suspend fun withContextBitmap(path: String?, rotation: Int): Bitmap? =
         }
     }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun ImageToolsSheet(
     block: DocumentBlock,
@@ -521,27 +522,37 @@ private fun ImageToolsSheet(
             Text("Width: ${block.imageWidthPercent}%", fontSize = 13.sp, color = c.text2)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf(25, 50, 75, 100).forEach { p ->
-                    ClayPill("$p%", block.imageWidthPercent == p) { onChange(block.copy(imageWidthPercent = p)) }
+                    ClayPill("$p%", block.imageWidthPercent == p) {
+                        onChange(block.copy(imageWidthPercent = p, caption = caption))
+                    }
                 }
             }
             Spacer(Modifier.height(10.dp))
             Text("Rotate", fontSize = 13.sp, color = c.text2)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                // One model update per tap: the sheet's `block` is re-read from the
+                // document on every recomposition, so a second copy() built from the
+                // stale parameter would silently discard this change.
                 ClaySoftButton("↺ 90°") {
                     rotation = (rotation + 270) % 360
-                    onChange(block.copy(rotationDegrees = rotation))
+                    onChange(block.copy(rotationDegrees = rotation, caption = caption))
                 }
                 ClaySoftButton("↻ 90°") {
                     rotation = (rotation + 90) % 360
-                    onChange(block.copy(rotationDegrees = rotation))
+                    onChange(block.copy(rotationDegrees = rotation, caption = caption))
                 }
-                ClaySoftButton("Reset") { rotation = 0; onChange(block.copy(rotationDegrees = 0)) }
+                ClaySoftButton("Reset") {
+                    rotation = 0
+                    onChange(block.copy(rotationDegrees = 0, caption = caption))
+                }
             }
             Spacer(Modifier.height(10.dp))
             Text("Align", fontSize = 13.sp, color = c.text2)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 listOf("Left" to 0, "Center" to 1, "Right" to 2).forEach { (label, align) ->
-                    ClayPill(label, block.align == align) { onChange(block.copy(align = align)) }
+                    ClayPill(label, block.align == align) {
+                        onChange(block.copy(align = align, caption = caption))
+                    }
                 }
             }
             Spacer(Modifier.height(10.dp))

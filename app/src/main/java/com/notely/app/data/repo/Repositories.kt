@@ -16,19 +16,13 @@ class NotebookRepository(private val dao: NotebookDao) {
         dao.updateFields(id, name, icon, color, System.currentTimeMillis())
     suspend fun setTrashed(id: Long, trashed: Boolean) = dao.setTrashed(id, trashed, System.currentTimeMillis())
     suspend fun setArchived(id: Long, archived: Boolean) = dao.setArchived(id, archived, System.currentTimeMillis())
-    suspend fun setViewMode(id: Long, mode: String) = dao.setViewMode(id, mode)
-
-    /** Moving every note of [from] into [to] is the safe "merge notebooks" primitive. */
-    suspend fun mergeNotebook(from: Long, to: Long) {
-        dao.reparentNotes(from, to)
-        dao.setTrashed(from, true, System.currentTimeMillis())
-    }
     suspend fun deleteForever(id: Long) = dao.deleteById(id)
 }
 
 class NoteRepository(
     private val dao: NoteDao,
-    private val versionDao: VersionDao
+    private val versionDao: VersionDao,
+    private val notebookDao: NotebookDao
 ) {
     fun observeActive() = dao.observeActive()
     fun observeInNotebook(nb: Long) = dao.observeInNotebook(nb)
@@ -77,11 +71,17 @@ class NoteRepository(
     suspend fun setArchived(id: Long, archived: Boolean) = dao.setArchived(id, archived, System.currentTimeMillis())
     suspend fun setViewMode(id: Long, mode: String) = dao.setViewMode(id, mode)
 
-    /** Moving every note of [from] into [to] is the safe "merge notebooks" primitive. */
+    /**
+     * "Merge notebooks": re-parent every note of [from] into [to], then retire the
+     * source notebook. The notes move as a single database transaction so a crash
+     * can never leave half the notes in a notebook that is being archived.
+     */
+    @androidx.room.Transaction
     suspend fun mergeNotebook(from: Long, to: Long) {
         dao.reparentNotes(from, to)
-        dao.setTrashed(from, true, System.currentTimeMillis())
+        notebookDao.setArchived(from, true, System.currentTimeMillis())
     }
+
     suspend fun setReminder(id: Long, at: Long?) = dao.setReminder(id, at)
     suspend fun deleteForever(id: Long) = dao.deleteById(id)
     suspend fun emptyTrash() = dao.emptyTrash()
