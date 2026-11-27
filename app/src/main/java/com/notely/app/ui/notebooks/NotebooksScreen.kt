@@ -390,7 +390,7 @@ private fun FlowRowActions(actions: List<Pair<String, () -> Unit>>) {
     Column {
         actions.chunked(3).forEach { row ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-                row.forEach { (label, action) -> ClaySoftButton(label, action) }
+                row.forEach { (label, action) -> ClaySoftButton(label) { action() } }
             }
         }
     }

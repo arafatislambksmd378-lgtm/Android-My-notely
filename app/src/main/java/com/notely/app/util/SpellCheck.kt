@@ -48,17 +48,23 @@ object SpellCheck {
                         override fun onGetSentenceSuggestions(results: Array<out SentenceSuggestionsInfo>?) {
                             val found = mutableListOf<Issue>()
                             results?.forEach { sentence ->
-                                val infos = sentence.suggestionsInfo ?: return@forEach
-                                val offsets = sentence.offsetsInfo
+                                // Java getters: getSuggestionsInfo()/getOffsetsInfo().
+                                val infos = sentence.getSuggestionsInfo() ?: return@forEach
+                                val offsets = sentence.getOffsetsInfo()
                                 infos.forEachIndexed { i, info ->
                                     val flags = info.suggestionsAttributes
+
                                     val looksLikeTypo = (flags and SuggestionsInfo.RESULT_ATTR_LOOKS_LIKE_TYPO) != 0
                                     val inDictionary = (flags and SuggestionsInfo.RESULT_ATTR_IN_THE_DICTIONARY) != 0
                                     if (looksLikeTypo && !inDictionary) {
+                                        // SuggestionsInfo.getSuggestionStart(index) and
+                                        // getSuggestionEnd(index) return offsets into the
+                                        // *sentence* text; SuggestionsInfo also exposes the
+                                        // covered text directly.
                                         val off = offsets?.getOrNull(i) ?: return@forEachIndexed
-                                        val start = off.offset
-                                        val end = start + off.length
-                                        if (off.length > 0 && start >= 0 && end <= text.length) {
+                                        val start = off.start
+                                        val end = start + (off.end - off.start).coerceAtLeast(0)
+                                        if (end > start && start >= 0 && end <= text.length) {
                                             found.add(Issue(start, end, text.substring(start, end)))
                                         }
                                     }
