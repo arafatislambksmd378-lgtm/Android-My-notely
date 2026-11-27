@@ -161,16 +161,8 @@ class ExportersTest {
         assertEquals("application/vnd.oasis.opendocument.text", zipEntry(bytes, "mimetype"))
     }
 
-    @Test
-    fun pdfHasPaginatedPages() {
-        val pdf = Exporters.toPdf(blocks, PageSetup(pageNumbers = true, header = "Head"))
-        assertTrue(pdf.isNotEmpty())
-        assertTrue(pdf.size > 400)
-        // %PDF magic
-        assertEquals("%PDF", String(pdf, 0, 4, Charsets.US_ASCII))
-        val text = String(pdf, Charsets.ISO_8859_1)
-        assertTrue(text.contains("/Type /Page"))
-    }
+    // PDF output is covered by PdfExportInstrumentedTest (androidTest): the native
+    // PdfDocument writer is unavailable on the JVM, so it cannot be asserted here.
 
     @Test
     fun safeName() {
