@@ -96,12 +96,20 @@ fun ClayIconTile(
     )
 }
 
+/**
+ * Clay primary button.
+ *
+ * Two overloads on purpose: Compose/Kotlin only allows a trailing lambda when the
+ * *last* parameter is a function type. Call sites in this app are written as
+ * `ClayPrimaryButton("Save") { save() }`, so the second overload exists to keep
+ * that natural syntax compiling while `enabled` and `modifier` stay available.
+ */
 @Composable
 fun ClayPrimaryButton(
     text: String,
-    onClick: () -> Unit,
     modifier: Modifier = Modifier,
-    enabled: Boolean = true
+    enabled: Boolean = true,
+    onClick: () -> Unit
 ) {
     val c = LocalNotelyColors.current
     val interaction = remember { MutableInteractionSource() }
@@ -124,7 +132,15 @@ fun ClayPrimaryButton(
 }
 
 @Composable
-fun ClaySoftButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun ClayPrimaryButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true
+) = ClayPrimaryButton(text = text, modifier = modifier, enabled = enabled, onClick = onClick)
+
+@Composable
+fun ClaySoftButton(text: String, modifier: Modifier = Modifier, onClick: () -> Unit) {
     val c = LocalNotelyColors.current
     OutlinedButton(
         onClick = onClick,
@@ -147,6 +163,10 @@ fun SectionLabel(text: String) {
         color = c.text2, letterSpacing = 1.sp
     )
 }
+
+@Composable
+fun ClaySoftButton(text: String, onClick: () -> Unit, modifier: Modifier = Modifier) =
+    ClaySoftButton(text = text, modifier = modifier, onClick = onClick)
 
 @Composable
 fun ColorDot(color: Color, selected: Boolean, onClick: () -> Unit) {
