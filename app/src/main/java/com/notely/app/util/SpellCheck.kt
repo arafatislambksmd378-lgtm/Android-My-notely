@@ -48,25 +48,22 @@ object SpellCheck {
                         override fun onGetSentenceSuggestions(results: Array<out SentenceSuggestionsInfo>?) {
                             val found = mutableListOf<Issue>()
                             results?.forEach { sentence ->
-                                // Java getters: getSuggestionsInfo()/getOffsetsInfo().
-                                val infos = sentence.getSuggestionsInfo() ?: return@forEach
-                                val offsets = sentence.getOffsetsInfo()
-                                infos.forEachIndexed { i, info ->
+                                // API: getSuggestionsCount() + getSuggestionsInfoAt(i) +
+                                // getOffsetAt(i)/getLengthAt(i). Offsets are relative to the
+                                // TextInfo we submitted, which is the whole block.
+                                for (i in 0 until sentence.suggestionsCount) {
+                                    val info = sentence.getSuggestionsInfoAt(i) ?: continue
                                     val flags = info.suggestionsAttributes
-
-                                    val looksLikeTypo = (flags and SuggestionsInfo.RESULT_ATTR_LOOKS_LIKE_TYPO) != 0
-                                    val inDictionary = (flags and SuggestionsInfo.RESULT_ATTR_IN_THE_DICTIONARY) != 0
-                                    if (looksLikeTypo && !inDictionary) {
-                                        // SuggestionsInfo.getSuggestionStart(index) and
-                                        // getSuggestionEnd(index) return offsets into the
-                                        // *sentence* text; SuggestionsInfo also exposes the
-                                        // covered text directly.
-                                        val off = offsets?.getOrNull(i) ?: return@forEachIndexed
-                                        val start = off.start
-                                        val end = start + (off.end - off.start).coerceAtLeast(0)
-                                        if (end > start && start >= 0 && end <= text.length) {
-                                            found.add(Issue(start, end, text.substring(start, end)))
-                                        }
+                                    val looksLikeTypo =
+                                        (flags and SuggestionsInfo.RESULT_ATTR_LOOKS_LIKE_TYPO) != 0
+                                    val inDictionary =
+                                        (flags and SuggestionsInfo.RESULT_ATTR_IN_THE_DICTIONARY) != 0
+                                    if (!looksLikeTypo || inDictionary) continue
+                                    val start = sentence.getOffsetAt(i)
+                                    val len = sentence.getLengthAt(i)
+                                    val end = start + len
+                                    if (len > 0 && start >= 0 && end <= text.length) {
+                                        found.add(Issue(start, end, text.substring(start, end)))
                                     }
                                 }
                             }
