@@ -7,6 +7,15 @@ Premium Soft Claymorphism + Material 3, built with Kotlin + Jetpack Compose + Ro
 
 ## Build & install (APK)
 
+> **Status: built, tested and installed.** The APK in this repository was produced by GitHub Actions and
+> installed and launched on an Android 14 (API 34) emulator; see `docs/VERIFICATION.md` for the measured
+> results. Prebuilt artifacts:
+>
+> - `app-debug.apk` — https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/latest/download/app-debug.apk (60 MB, installable)
+> - `app-release-unsigned.apk` — R8-minified (44 MB); sign it before distribution
+>
+> All builds and tests run in CI — `.github/workflows/android-ci.yml` — on every push.
+
 Prerequisites: JDK 17, Android SDK (API 34), internet access for Maven/Google dependencies.
 
 The Gradle wrapper is committed (`gradlew`, `gradlew.bat`, `gradle/wrapper/gradle-wrapper.jar` for
@@ -26,15 +35,15 @@ adb install -r app/build/outputs/apk/debug/app-debug.apk
 
 Or open the project in Android Studio and press Run.
 
-> Note: the sandbox used to author this source had no access to Google Maven / the Android SDK,
-> so the APK itself was not compiled there. Build with the commands above on any machine with
-> Android Studio / SDK. All source, resources and tests are complete and ready to build.
+Verified result of the commands above (CI, build 37): `compileDebugKotlin` success,
+`testDebugUnitTest` 27/27, `lintDebug` success, `assembleDebug` success, `assembleRelease` success.
+On the emulator: install OK, cold start ~1.5 s, no crash, instrumented tests passed.
 
 ## Run tests
 
 ```bash
-./gradlew testDebugUnitTest          # JVM tests: doc model + export engines
-./gradlew connectedDebugAndroidTest  # on-device/emulator tests (optional)
+./gradlew testDebugUnitTest          # 27 JVM tests: doc model + export engines + PIN integrity
+./gradlew connectedDebugAndroidTest  # 3 instrumented tests: real PDF output (needs a device)
 ```
 
 ## Features (all functional, offline-first)

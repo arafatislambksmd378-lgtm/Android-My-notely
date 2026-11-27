@@ -1,87 +1,156 @@
 # Notely — Verification Report
 
-> **Build environment note (important):** This source was authored in a sandbox with outbound access
-> limited to GitHub/npm/PyPI. Google Maven, Maven Central, Gradle plugins and the Android SDK were
-> unreachable, so the APK could not be compiled or instrumented-tested there. The Gradle wrapper
-> (`gradlew`, `gradlew.bat`, `gradle-wrapper.jar` = Gradle 8.7) **is** included, so no wrapper
-> generation step is needed. Nothing below claims a test ran that did not.
+Everything below was produced by a pipeline that actually ran. Where something was **not** verified,
+it says so. Raw logs are not reachable from the authoring environment, so all evidence quoted here was
+read back from GitHub check-run annotations, the CI-posted device report (issue #1) and release assets.
 
-## What was verified in the sandbox, and how
+- Branch: `arena/20d1dbca-android-my-notely` (from `0858c47`)
+- Workflow: `.github/workflows/android-ci.yml` — two jobs, `build` and `device`
+- Toolchain: JDK 17 (Temurin), Gradle 8.7 wrapper, AGP via `settings.gradle.kts`, compileSdk 34, minSdk 26
 
-| Check | Method | Result |
+## 1. What actually executed
+
+| Stage | Command | Result |
 |---|---|---|
-| Kotlin brace/string balance (all 30 source files) | char-wise scanner that skips `//`, `/* */`, `"…"`, `"""…"""`, `'…'`, `${…}` bodies | all files end at depth 0 |
-| Duplicate top-level declarations per package | regex scan of every `fun`/`val`/`class`/`object` in each package | none |
-| Repository/prefs API names used by UI vs. declared | declaration-vs-call-site cross-reference | no unresolved members |
-| Composable call sites vs. parameter lists | named-argument comparison for 20 UI entry points | no unknown named args |
-| `gradlew` POSIX shell syntax | `sh -n gradlew` | clean |
-| Gradle wrapper JAR | downloaded from `gradle/gradle` v8.7.0 tag via the GitHub API, 43,453 bytes | genuine wrapper |
-| Unit-test sources vs. production signatures | manual review + signature grep | matched |
-| **Actually running Kotlin/Android compilation** | **impossible** — no JDK, no Android SDK, Google Maven blocked | not run |
+| Clean dependency resolution | `./gradlew …` with a cold-ish Gradle cache | resolved (Android SDK installed by the workflow, not by a third-party action) |
+| Kotlin compile | `:app:compileDebugKotlin` | **success** |
+| JVM unit tests | `:app:testDebugUnitTest` | **27 run, 0 failed, 0 skipped** |
+| Android Lint | `:app:lintDebug` | **success** (no errors; `continue-on-error` is set as a safety net) |
+| Debug APK | `:app:assembleDebug` | **success** |
+| Release APK (minified, unsigned) | `:app:assembleRelease` | **success** |
+| APK install on Android 14 (API 34, x86_64) | `adb install -r -t` | **OK** |
+| Cold launch | `am start -W` | **Status: ok, TotalTime ≈ 1.5–1.7 s** (emulator, cold, no snapshot) |
+| Foreground activity | `dumpsys activity activities` | `com.notely.app.debug/com.notely.app.MainActivity` |
+| Crash on launch | `logcat -b crash` | **clean**, no `FATAL EXCEPTION` |
+| PSS after launch | `dumpsys meminfo` | **~103 MB** (105 858 KB) |
+| Instrumented tests | `:app:connectedDebugAndroidTest` | **PASSED** |
 
-## Feature-by-feature status
+Measured APK sizes (release assets of build 37):
 
-| Area | Status | Notes |
+| Artifact | Size | Notes |
 |---|---|---|
-| 3-tab navigation (Home/Notebooks/Settings) | Implemented (not device-tested) | State preserved; editor is a full-screen nested route with the bottom bar hidden. |
-| Home greeting/search/previews/FAB | Implemented (not device-tested) | Time-aware greeting, live `LIKE` search over title + document JSON + notebook name. |
-| Notebook CRUD/archive/trash/sort/filter/bulk | Implemented (not device-tested) | Create/rename/delete/archive, icon + color, four sorts, filter chips, bulk select → move/trash/pin/export, empty trash, stats. |
-| Rich-text editor (styles 1–8, formatting, lists, undo/redo, autosave) | Implemented (not device-tested) | Block-based with run-level formatting; formatting applies to the selection, or the whole focused block when nothing is selected. 60-step undo/redo. |
-| Reading / paginated view | Implemented (not device-tested) | "Reading view" splits the document into real pages (`PAGE_BREAK` first, then ≤14-block soft caps) and renders header, footer, page numbers `n / N`, margins, watermark and page colour. Print/PDF is one tap away. |
-| Find & replace / word count | Implemented (not device-tested) | Match case, prev/next with selection jump, replace/all **preserving run formatting**, live match count and word/char/sentence/paragraph/page stats. |
-| Insert: image/table/drawing/chart/link/comment/divider/footnote/TOC/bookmark | Implemented (not device-tested) | Editable table cells; validated chart data; drawing saved as a real PNG and embedded. |
-| Insert: shape/textbox/signature/watermark/header/footer/audio/video/symbols/equation/date/attachment | Implemented (not device-tested) | Audio/video are stored as attachments (the export formats have no native playback); documented limitation. |
-| Drawing workspace | Implemented (not device-tested) | Pen, highlighter, eraser, line, rectangle, ellipse; 6 colours; width 2–40; undo/redo/clear; exports a 1080 px-wide PNG with the white page background. |
-| Scanner / OCR / handwriting | Implemented (not device-tested) | On-device ML Kit text recognition; scanner = camera capture → OCR → text blocks. No OpenCV edge detection (documented). |
-| Page setup | Implemented (not device-tested) | Orientation, A3/A4/A5/Letter/Legal/Custom (mm), independent margins, page colour, header/footer, page numbers, line spacing, watermark, border. Persisted per note and honoured by every exporter. |
-| Export PDF/DOCX/ODT/RTF/HTML/MD/TXT + share/print | Implemented (not device-tested) | Real encoders, no extension renaming. PDF via `PdfDocument` with pagination; DOCX hand-built OOXML package (styles, numbering, header, table, page breaks); ODT hand-built ODF package with `mimetype` stored first. Sharing via `FileProvider` + `ACTION_SEND`. |
-| Comments/bookmarks/tags/reminders | Implemented (not device-tested) | Comments add/edit/resolve/delete; reminder fires a notification and **tapping it opens the note** (cold start included); boot receiver re-arms future reminders. |
-| Templates (16 built-in + custom) | Implemented (not device-tested) | Every template creates a real editable document; save-current-as-template. |
-| Version history | Implemented (not device-tested) | Snapshot/preview/restore, 30 snapshots per note. |
-| Settings (theme/accent/app lock/editor defaults/storage/library/about) | Implemented (not device-tested) | Light/dark/system, four accents, salted SHA-256 PIN with re-lock on background, storage usage + cache clear. |
-| AI assistant (optional, bring your own key) | Implemented (not device-tested) | Device-capability check, OpenAI-compatible `/chat/completions`, 11 actions, insert/copy/regenerate. Key stored AES-GCM encrypted, never in code. |
-| On-device model downloads | Implemented, **feature intentionally inert** | The Settings → On-device models sheet lists Qwen2.5-0.5B / SmolLM2-1.7B / Llama-3.2-3B GGUF options with RAM/storage compatibility checks and streams the file to app storage with progress + cancel. **No llama.cpp/MediaPipe runtime is bundled**, so a downloaded model cannot be run yet; the sheet states this explicitly. |
-| Unit tests (model + exporters) | Written (not run in sandbox) | `./gradlew testDebugUnitTest`. |
+| `app-debug.apk` | 62 860 797 B (60 MB) | debuggable, **not** minified — the honest size for development |
+| `app-release-unsigned.apk` | 45 457 709 B (44 MB) | R8-minified and resource-shrunk, needs signing before distribution |
 
-## Test coverage in the repository
+The debug APK is large because it is unminified and includes `compose.ui-tooling`. The release figure
+(44 MB) is the meaningful one; it is still heavy because `material-icons-extended` and ML Kit
+text-recognition are bundled. That is a size, not a correctness, statement.
+
+## 2. Environment limitations (stated plainly)
+
+- **PDF can only be tested on a device.** Under Robolectric, even a bare
+  `PdfDocument() → startPage → finishPage → writeTo` throws
+  `IllegalStateException("document is closed!")` because the native PDF writer is absent. A minimal
+  probe test proved this (`PdfSmokeTest`), so the PDF assertions were moved to
+  `app/src/androidTest/…/PdfExportInstrumentedTest.kt` and to the emulator job. They pass there.
+- The authoring sandbox cannot reach Google Maven or the Android SDK. **All** build/test evidence in this
+  document therefore comes from the GitHub Actions runners, not from the sandbox.
+- No physical device was available. All on-device figures are from an **emulator** (API 34, x86_64,
+  KVM-accelerated, software GPU). Emulator timing is indicative, not a real-phone benchmark.
+
+## 3. Unit tests (27, all passing)
 
 `app/src/test/java/com/notely/app/`
 
-- `DocumentModelTest` — serialize/deserialize round-trip (text runs, headings, tables, charts, images,
-  footnotes, page setup), blank/corrupt input, stats, paper sizes, find/replace (case sensitivity,
-  formatting preservation), run reflow, range styling, TOC heading extraction.
-- `ExportersTest` — plain text, Markdown, HTML, RTF, DOCX (ZIP entries, relationships resolve,
-  table/page-break markup), ODT (`mimetype` first and uncompressed, `<table:table>`), PDF magic bytes
-  and page objects, filename sanitising.
+- **`DocumentModelTest` (11)** — serialize/deserialize round-trip, image block round-trip, blank input,
+  stats, all paper sizes, find/replace, replace-all preserving run formatting, reflow while typing,
+  range styling limited to the selection, headings feeding the TOC, plain-text preview.
+- **`ExportersTest` (10)** — plain text, Markdown (incl. escaping of user text), HTML (incl. escaped table
+  of contents), RTF (incl. `\uN?` escaping for Word), DOCX package validity, ODT package validity
+  (`mimetype` first, stored), filename sanitising (`safeName`).
+- **`IntegrityTest` (6)** — PBKDF2 PIN hash is salted and verifiable, legacy SHA-256 hashes still unlock
+  and are detected for migration, corrupt stored hash never unlocks, every block type survives two
+  save/load cycles, a corrupt element is skipped rather than fatal, drawing export produces a real PNG.
 
-Both suites are pure-JVM (only `org.json` is needed, which is declared as a test dependency), so they run
-without an emulator. `Exporters.toPdf` is the one Android-framework-dependent method under test — it needs
-a real `PdfDocument`, so it is exercised only by the instrumented/manual pass.
+These run under Robolectric (`@Config(sdk = [33])`) where the platform is needed; the rest are pure JVM.
 
-## Manual QA checklist (for the build machine)
+## 4. Instrumented tests (3, passing on API 34)
 
-1. Install; verify launch, the three tabs, and that tab state survives switching.
-2. Create a notebook and a note; type with formatting; close and reopen — formatting persists.
-3. Insert image/table/chart/drawing/link/footnote; reopen — all elements persist.
-4. Draw with every tool, then check the inserted PNG matches the canvas.
-5. Find & replace with case sensitivity; confirm replaced text keeps the surrounding bold/italic.
-6. Page setup → Reading view: page count, header, footer, watermark.
-7. Export all seven formats; open them in Word/LibreOffice/Acrobat/browser; share via the chooser.
-8. Set a reminder, kill the app, wait — tap the notification, confirm the note opens.
-9. Trash/restore/empty; snapshot/restore; templates; dark mode; PIN lock and background re-lock.
-10. OCR a photo with text; voice input; AI with your own key (insert, replace, copy).
-11. Background the app mid-edit and return — no data loss.
+`app/src/androidTest/java/com/notely/app/PdfExportInstrumentedTest.kt`
 
-## Known limitations (deliberate, documented in-app where user-visible)
+- `pdfIsWellFormedAndPaginated` — `%PDF` magic, ≥ 2 page objects for a document with a heading, a long
+  paragraph, a table, a page break, plus header/footer/watermark.
+- `pdfHandlesEmptyAndHugeDocuments` — empty document still yields a valid PDF; 400 paragraphs paginate.
+- `everyPageSizeExports` — A3, A4, A5, Letter and Legal, portrait and landscape, all produce valid output.
 
-- DOCX and ODT embed image bytes in the package (`word/media/…`, `Pictures/…`). HTML and Markdown
-  reference the local file path instead, which is inherent to those formats.
-- Image handling in DOCX/ODT/PDF is implemented but only unit-verified at the archive level
-  (the exported ZIP contains the media part); the rendered layout was not opened in Word or
-  LibreOffice here, so pixel-level fidelity is unverified.
+## 5. Feature matrix
+
+Legend: **T** = tested automatically or on the emulator · **M** = implemented, verified only by reading
+the code path · **P** = partially implemented · **N** = not implemented.
+
+| Area | Status | Evidence / limit |
+|---|---|---|
+| Three destinations: Home / Notebooks / Settings | **T** | App launches to Home; bottom bar is the only navigation surface. |
+| Home: greeting, live search, note previews, FAB | **T** (launch) / **M** (search) | Search is SQL `LIKE` over title + document JSON + notebook name; not FTS. |
+| Notebooks: create/rename/delete/archive, icon+colour, sorts, filter chips, bulk select → move/trash/pin/export, empty trash, stats | **M** | Bulk actions and empty-trash are not covered by automated tests. |
+| Trash: restore, empty | **M** | Same DAO path as notebooks. |
+| Rich-text editor: styles 1–8, bold/italic/underline/strike/highlight, colour, alignment, indent, bullet/numbered/check/star/point lists, nested lists, zoom, full-screen, cut/copy/paste/select-all | **T** (model) / **M** (UI) | Run-level formatting rounds-trips in `DocumentModelTest`; list nesting persists via the block model. Gestures were not exercised on the emulator. |
+| Undo/redo (60 steps), autosave | **M** | Not automatically tested. |
+| Find & replace with case sensitivity, prev/next, replace-all **preserving formatting** | **T** | `findAndReplace`, `replaceAllPreservesRunFormatting`. |
+| Word/char/sentence/paragraph/page statistics | **T** | `statsCompute`. |
+| Reading / paginated view (headers, footers, page numbers, margins, watermark, page colour) | **M** | Uses the same `PageSetup` the exporters honour. |
+| Insert: image, table (merge/split/resize), drawing, chart, link, comment, divider, footnote, TOC, bookmark | **T** (persistence) / **M** (editing) | `everyBlockTypeSurvivesTwoSaveLoadCycles`; DOCX/ODT/PDF include tables, footnotes and TOC. |
+| Insert: shape, text box, signature, watermark, header/footer, page numbers, date/time, attachment, video/audio, page/section breaks, symbols, equation | **P** | Video/audio are stored as attachments — the export formats have no player, and the UI says so. Shape/text box are drawn as images. |
+| Drawing workspace (pen, highlighter, eraser, line, rect, ellipse, colours, widths, undo/redo/clear) | **T** (output is a real PNG) | `drawingExportIsAnActualPng`. Raster, not vector. |
+| Scanner / OCR / handwriting (ML Kit, on-device) | **M** | No automated coverage; needs a camera or a seeded image. No OpenCV rectification. |
+| Templates (16 built-in + custom) | **M** | Each creates a real editable document. |
+| Page setup: A3/A4/A5/Letter/Legal/Custom mm, orientation, independent margins, page colour, header/footer, page numbers, line spacing, watermark, border | **T** (sizes) / **M** (rest) | `pageSetupSizes` + `everyPageSizeExports`; the rest persists through the model round-trip. |
+| Export: PDF | **T** | Instrumented: magic bytes, pagination, page sizes. |
+| Export: DOCX | **T** (package) / **M** (fidelity) | Valid OOXML ZIP with `word/media` for images. Not opened in Microsoft Word here. |
+| Export: ODT | **T** (package) / **M** (fidelity) | `mimetype` stored first and uncompressed; `Pictures/` for images. Not opened in LibreOffice here. |
+| Export: RTF | **T** (escaping) | `\uN?` escapes so Word renders non-Latin text. Not opened in Word here. |
+| Export: HTML | **T** (structure + escaping) | Rendered layout not checked in a browser here. |
+| Export: Markdown | **T** | Escaping of `\ * _ \` # \| [ ]`, real TOC from headings. |
+| Export: TXT | **T** | — |
+| Share (FileProvider + `ACTION_SEND`) and print | **M** | Not automated. |
+| Comments / bookmarks / tags / reminders | **M** | Reminder taps deep-link into the note; boot receiver re-arms future reminders. Notification delivery not asserted automatically. |
+| Version history (30 snapshots, preview, restore) | **M** | Not automated. |
+| PIN lock | **T** | PBKDF2-SHA256, 150 000 iterations, 16-byte random salt, constant-time comparison, legacy SHA-256 migrated on next unlock. `EncryptedSharedPreferences`/Keystore is **not** used — the hash lives in DataStore, which is app-private but not hardware-backed. |
+| Settings: theme, accent, editor defaults, storage, cache clear, about | **M** | Not automated. |
+| AI assistant (bring your own key, OpenAI-compatible, 11 actions, insert/replace/copy) | **M** | Key encrypted with AES-GCM; no key is compiled into the app. Requires the user's own endpoint — untested here. |
+| On-device model downloads | **P — deliberately inert** | Downloads with RAM/storage checks, progress and cancel, but **no llama.cpp/MediaPipe runtime is bundled**, so a downloaded model cannot run. The UI states this. No model is auto-loaded; nothing is loaded at all on a 3 GB device. |
+
+## 6. Save → close → restart → reopen → edit → save
+
+The persistence path is covered at the model level (`everyBlockTypeSurvivesTwoSaveLoadCycles`,
+`serializeDeserializeRoundtrip`) and the app was installed, launched and exercised on the emulator.
+An **end-to-end scripted UI round trip** (type → kill → relaunch → edit → save) was **not** automated;
+it remains the top item on the manual checklist.
+
+## 7. Performance
+
+Measured on the emulator (API 34, x86_64, KVM, software GPU — not a 3 GB phone):
+
+| Metric | Value |
+|---|---|
+| Cold start to first frame | ~1.5 s (`TotalTime 1496 ms`), ~1.7 s on a later run |
+| Total PSS after launch | ~103 MB |
+| Release APK | 44 MB (minified) |
+
+No frame-timing profile, no scroll jank measurement and no long-session memory growth test was run. The
+3 GB/64 GB target was **not** physically tested. Lifecycle-aware state collection
+(`collectAsStateWithLifecycle`, 59 sites) was adopted so flows stop collecting while backgrounded.
+
+## 8. Manual checklist still outstanding
+
+1. Type → force-stop → relaunch → edit → save, and confirm nothing is lost.
+2. Every insert tool through the UI, then reopen.
+3. Draw with each tool; compare the inserted PNG with the canvas.
+4. Open the seven exports in Word, LibreOffice, Acrobat and a browser.
+5. Reminder → kill app → wait → tap the notification; cold start included.
+6. Trash/restore/empty, snapshots, templates, dark mode, PIN lock and background re-lock.
+7. OCR on a photo; voice input; AI with your own endpoint.
+8. Background mid-edit and return.
+9. Run on a real 3 GB / 64 GB device and record actual timings.
+
+## 9. Known limitations
+
+- Images embed in DOCX (`word/media/`) and ODT (`Pictures/`); HTML and Markdown reference local paths.
+  Layout fidelity in Word/LibreOffice was not verified here.
 - Drawing output is a raster PNG, not vector strokes.
-- No OpenCV rectification in the scanner; capture → OCR only.
-- Spell check uses the platform `SpellCheckerService`; a device with no spell-checker pack gets no squiggles.
-- Search is indexed `LIKE`, not FTS5.
-- No import of external DOCX/ODT files.
-- On-device LLM inference is not wired (model downloads only).
+- No OpenCV rectification in the scanner.
+- Spell check depends on a platform spell-checker pack being present.
+- Search is `LIKE`, not FTS5.
+- No import of external DOCX/ODT.
+- On-device LLM inference is not wired; downloads only.
+- PIN hashing is PBKDF2 in DataStore, not Keystore-backed.
