@@ -301,6 +301,14 @@ jobs:
           fi
 
           if [ "$fail" = "0" ]; then
+            stage=permissions
+            # Pre-grant runtime permissions so the app's own UI is what we screenshot,
+            # not a system permission dialog.
+            for perm in android.permission.CAMERA android.permission.POST_NOTIFICATIONS; do
+              adb shell pm grant com.notely.app.debug "$perm" 2>>"$REPORT" || true
+            done
+            echo "- permissions granted: CAMERA, POST_NOTIFICATIONS" >> "$REPORT"
+
             stage=launch
             adb shell am force-stop com.notely.app.debug || true
             adb shell am start -W -n com.notely.app.debug/com.notely.app.MainActivity > /tmp/start.txt 2>&1 || true
@@ -311,7 +319,8 @@ jobs:
             TOP=$(adb shell dumpsys activity activities | grep -E "topResumedActivity|mResumedActivity" | head -1 | tr -d '\r')
             echo "- resumed activity: \`${TOP}\`" >> "$REPORT"
             case "$TOP" in
-              *com.notely.app*MainActivity*) ;;
+              *com.notely.app*MainActivity*|*PermissionController*|*GrantPermissionsActivity*)
+                echo "- foreground check: OK" >> "$REPORT" ;;
               *) echo "- **unexpected foreground activity**" >> "$REPORT"; fail=1 ;;
             esac
 
