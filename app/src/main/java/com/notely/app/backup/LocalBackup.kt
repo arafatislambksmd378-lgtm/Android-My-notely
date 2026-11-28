@@ -8,6 +8,7 @@ import com.notely.app.data.db.NotelyDatabase
 import com.notely.app.doc.DocumentSerializer
 import com.notely.app.recovery.DocumentRecovery
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -199,8 +200,9 @@ class LocalBackup(private val context: Context, private val db: NotelyDatabase) 
                 rewritten[path] ?: error("Document asset is not listed in manifest")
             }) }
             progress("Restoring as new notebooks and documents…")
-            val count = db.withTransaction { insertCopies(data) }
-            committed = true
+            val count = withContext(NonCancellable) {
+                db.withTransaction { insertCopies(data) }.also { committed = true }
+            }
             progress("Restored $count documents. Existing data was not overwritten.")
             count
         } finally {

@@ -351,6 +351,14 @@ jobs:
           echo "DEVICE_FAIL=$fail" >> "$GITHUB_ENV"
           cat "$REPORT"
 
+      - name: Force Stop and SIGKILL recovery (two actual process terminations)
+        run: bash .github/scripts/process_recovery.sh
+
+      - name: Report Android test totals
+        if: always()
+        run: |
+          python3 .github/scripts/android_test_summary.py
+
       - name: Post the device report to the tracking issue
         if: always()
         env:
@@ -379,6 +387,9 @@ jobs:
           path: |
             /tmp/home.png
             /tmp/start.txt
+            /tmp/report.md
+            process-recovery-results/**
+            app/build/outputs/androidTest-results/**
             app/build/reports/androidTests/**
           if-no-files-found: warn
           retention-days: 14
