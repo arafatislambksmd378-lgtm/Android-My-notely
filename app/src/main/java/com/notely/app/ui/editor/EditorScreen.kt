@@ -90,6 +90,11 @@ fun EditorScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    fun navigateBack() {
+        // Navigation mutates Android LifecycleRegistry and must use the Android main dispatcher,
+        // even when a test/composition coroutine resumes on a different apply dispatcher.
+        app.scope.launch(Dispatchers.Main.immediate) { onBack() }
+    }
     val autosave by app.prefs.autosave.collectAsStateWithLifecycle(initialValue = true)
     val spellcheck by app.prefs.spellcheck.collectAsStateWithLifecycle(initialValue = true)
     val noteFlow = remember(noteId) { app.notes.observeById(noteId) }
@@ -320,7 +325,7 @@ fun EditorScreen(
             if (!readOnly && dirty) saveNow()?.join()
             leaving = false
             // Keep the editor open when a flush failed (or a newer edit arrived).
-            if (!dirty || readOnly || !loaded) onBack()
+            if (!dirty || readOnly || !loaded) navigateBack()
         }
     }
 
@@ -377,7 +382,7 @@ fun EditorScreen(
                 Text(
                     if (readOnly) "Read-only preview · ${stats.pages} page(s)"
                     else buildString {
-                        append(if (dirty && !autosave) "Unsaved" else saveStatus)
+                        append(if (dirty && !autosave) "Unsaved · $saveStatus" else saveStatus)
                         append(" · ${stats.words} words")
                     },
                     fontSize = 11.sp, color = if (dirty && !autosave) c.primary else c.text2,
@@ -673,12 +678,12 @@ fun EditorScreen(
             },
             onAi = { showOptions = false; showAi = true },
             onTemplates = { showOptions = false; showTemplates = true },
-            onMove = { nbId -> scope.launch { app.notes.move(noteId, nbId); onBack() } },
+            onMove = { nbId -> scope.launch { app.notes.move(noteId, nbId); navigateBack() } },
             onDelete = { showOptions = false; showDeleteConfirm = true },
             onColor = { idx -> cardColorIndex = idx; scope.launch { app.notes.setColor(noteId, idx) } },
             onPin = { scope.launch { app.notes.setPinned(noteId, !(note?.pinned ?: false)) } },
             onFavorite = { scope.launch { app.notes.setFavorite(noteId, !(note?.favorite ?: false)) } },
-            onArchive = { scope.launch { app.notes.setArchived(noteId, true); onBack() } },
+            onArchive = { scope.launch { app.notes.setArchived(noteId, true); navigateBack() } },
             onCopy = {
                 scope.launch {
                     // Abort any queued debounce first: its delayed save would otherwise
@@ -691,7 +696,7 @@ fun EditorScreen(
                     if (copyId > 0) {
                         val tagsOfNote = runCatching { app.tags.tagsForNote(noteId).first() }.getOrDefault(emptyList())
                         app.tags.copyTags(noteId, copyId, tagsOfNote)
-                        onBack()
+                        navigateBack()
                     }
                 }
             },
@@ -946,7 +951,7 @@ fun EditorScreen(
             text = { Text("The note moves to Trash and can be restored later. You can empty the trash from the library screen.") },
             confirmButton = {
                 TextButton(onClick = {
-                    scope.launch { app.notes.setTrashed(noteId, true); showDeleteConfirm = false; onBack() }
+                    scope.launch { app.notes.setTrashed(noteId, true); showDeleteConfirm = false; navigateBack() }
                 }) { Text("Move to trash", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") } }

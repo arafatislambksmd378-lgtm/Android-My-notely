@@ -29,7 +29,8 @@ class DocumentRecovery(private val db: NotelyDatabase, private val scope: Corout
                 if (draft != null && draft.baseUpdatedAt == note.updatedAt &&
                     digest(draft.title, draft.documentJson) == draft.sha256 &&
                     runCatching { DocumentSerializer.deserializeForEditing(draft.documentJson) }.isSuccess) {
-                    note.copy(title = draft.title, documentJson = draft.documentJson) to true
+                    note.copy(title = draft.title, documentJson = draft.documentJson) to
+                        (draft.title != note.title || draft.documentJson != note.documentJson)
                 } else note to false
             }
         }

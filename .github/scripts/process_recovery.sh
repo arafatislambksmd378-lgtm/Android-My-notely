@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
 # Runs in CI AFTER ordinary instrumentation. Never points at a user's device.
 set -euo pipefail
+trap 'echo "::error title=Process recovery harness::Command failed at line $LINENO (stage ${stage:-startup})"' ERR
 APP=com.notely.app.debug
 RUNNER=com.notely.app.debug.test/androidx.test.runner.AndroidJUnitRunner
 CLASS=com.notely.app.ProcessRecoveryInstrumentedTest
-adb shell getprop ro.kernel.qemu | tr -d '\r' | grep -qx 1
+emulator=$(adb shell getprop ro.boot.qemu | tr -d '\r')
+legacy=$(adb shell getprop ro.kernel.qemu | tr -d '\r')
+[[ "$emulator" == 1 || "$legacy" == 1 ]]
 mkdir -p process-recovery-results
 stage_run() {
   local stage=$1 mode=$2

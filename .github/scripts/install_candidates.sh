@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # The exact build-job bytes are installed after tests, not an independently signed rebuild.
 set -euo pipefail
-adb shell getprop ro.kernel.qemu | tr -d '\r' | grep -qx 1
+emulator=$(adb shell getprop ro.boot.qemu | tr -d '\r')
+legacy=$(adb shell getprop ro.kernel.qemu | tr -d '\r')
+[[ "$emulator" == 1 || "$legacy" == 1 ]]
 for apk in $(find packaged-apks -name '*.apk' | sort); do
   [[ "$apk" == *unsigned* ]] && continue
   if [[ "$apk" == *app-debug.apk ]]; then package=com.notely.app.debug; else package=com.notely.app; fi

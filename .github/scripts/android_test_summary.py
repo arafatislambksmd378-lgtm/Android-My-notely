@@ -12,6 +12,7 @@ for path in files:
     skipped += int(root.get('skipped', 0))
     for case in root.iter('testcase'):
         for node in list(case.findall('failure')) + list(case.findall('error')):
-            message = (node.get('message') or node.text or 'failure')[:1800].replace('\n', '%0A').replace('\r', '')
+            raw = (node.get('message') or node.text or 'failure')
+            message = (raw[:1000] + '\n...\n' + raw[-1800:]).replace('\n', '%0A').replace('\r', '')
             print(f"::error title={case.get('classname')}.{case.get('name')}::{message}")
 print(f'::notice title=Android test totals::{tests} run, {failures} failed, {skipped} skipped')

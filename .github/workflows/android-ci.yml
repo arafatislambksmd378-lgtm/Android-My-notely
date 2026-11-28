@@ -113,7 +113,7 @@ jobs:
       - name: Assemble debug APK
         run: ./gradlew :app:assembleDebug --stacktrace
 
-      - name: Assemble release APK (unsigned, for size/verify)
+      - name: Assemble release APK (signed only when secrets are configured)
         run: ./gradlew :app:assembleRelease --stacktrace
 
       - name: Verify APK identity, version, signatures and record metadata
@@ -370,6 +370,7 @@ jobs:
           cat "$REPORT"
 
       - name: Force Stop and SIGKILL recovery (two actual process terminations)
+        if: env.DEVICE_FAIL == '0'
         run: bash .github/scripts/process_recovery.sh
 
       - name: Report Android test totals
