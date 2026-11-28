@@ -7,6 +7,11 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.notely.app.ui.theme.Accent
@@ -29,6 +34,8 @@ class PreferencesRepository(private val context: Context) {
         val DEFAULT_FONT_SIZE = intPreferencesKey("default_font_size")
         val DEFAULT_LINE_SPACING = stringPreferencesKey("default_line_spacing")
         val APP_LOCK = booleanPreferencesKey("app_lock")
+        val PIN_FAILURES = intPreferencesKey("pin_failures")
+        val PIN_RETRY_AT = longPreferencesKey("pin_retry_at")
         val PIN_HASH = stringPreferencesKey("pin_hash")
         val RECENT_SEARCHES = stringPreferencesKey("recent_searches")
         val AI_BASE_URL = stringPreferencesKey("ai_base_url")
@@ -50,11 +57,17 @@ class PreferencesRepository(private val context: Context) {
     val defaultFont: Flow<String> = context.dataStore.data.map { it[Keys.DEFAULT_FONT] ?: "Default" }
     val defaultFontSize: Flow<Int> = context.dataStore.data.map { it[Keys.DEFAULT_FONT_SIZE] ?: 16 }
     val defaultLineSpacing: Flow<Float> = context.dataStore.data.map { it[Keys.DEFAULT_LINE_SPACING]?.toFloatOrNull() ?: 1.55f }
+    // A single DataStore emission prevents an unlocked frame while separate lock flows initialize.
+    val lockConfiguration: Flow<Pair<Boolean, String>?> = context.dataStore.data.map {
+        (it[Keys.APP_LOCK] ?: false) to (it[Keys.PIN_HASH] ?: "")
+    }
     val appLock: Flow<Boolean> = context.dataStore.data.map { it[Keys.APP_LOCK] ?: false }
     val recentSearches: Flow<List<String>> = context.dataStore.data.map {
         val raw = it[Keys.RECENT_SEARCHES] ?: ""
         if (raw.isBlank()) emptyList() else raw.split("\n").filter { s -> s.isNotBlank() }
     }
+    private val pinMutex = Mutex()
+    val pinRetryAt: Flow<Long> = context.dataStore.data.map { it[Keys.PIN_RETRY_AT] ?: 0L }
     val pinHash: Flow<String> = context.dataStore.data.map { it[Keys.PIN_HASH] ?: "" }
     val aiBaseUrl: Flow<String> = context.dataStore.data.map { it[Keys.AI_BASE_URL] ?: "" }
     val aiModel: Flow<String> = context.dataStore.data.map { it[Keys.AI_MODEL] ?: "" }
@@ -62,24 +75,39 @@ class PreferencesRepository(private val context: Context) {
 
     /**
      * The provider key is stored encrypted with an Android Keystore AES key (never plaintext,
-     * never logged). If the keystore is unavailable it is stored obfuscated and the app
-     * still works — the key is only ever used for the user's own provider calls.
+     * never logged). Encryption failures are reported to the user, never silently stored as plaintext.
      */
     suspend fun getAiApiKey(): String {
         val raw = context.dataStore.data.first()[Keys.AI_API_KEY] ?: ""
         return Crypto.decrypt(raw)
     }
 
-    suspend fun verifyPin(pin: String): Boolean {
-        val stored = pinHash.first()
-        if (stored.isBlank()) return false
-        val ok = com.notely.app.util.Security.verifyPin(pin, stored)
-        // Transparently migrate an old unsalted hash to salted PBKDF2 after a
-        // successful unlock, so no install keeps a crackable representation.
-        if (ok && com.notely.app.util.Security.isLegacyHash(stored)) {
-            setPinHash(com.notely.app.util.Security.hashPin(pin))
+    /** Serial verification with persisted cooldown; recomposition/relaunch cannot reset attempts. */
+    suspend fun verifyPin(pin: String): Boolean = withContext(Dispatchers.IO) {
+        pinMutex.withLock {
+            val prefs = context.dataStore.data.first()
+            val now = System.currentTimeMillis()
+            if ((prefs[Keys.PIN_RETRY_AT] ?: 0L) > now) return@withLock false
+            val stored = prefs[Keys.PIN_HASH].orEmpty()
+            val ok = com.notely.app.util.Security.verifyPin(pin, stored)
+            val upgraded = if (ok && com.notely.app.util.Security.isLegacyHash(stored))
+                com.notely.app.util.Security.hashPin(pin) else null
+            context.dataStore.edit {
+                if (ok) {
+                    it[Keys.PIN_FAILURES] = 0
+                    it[Keys.PIN_RETRY_AT] = 0L
+                    if (upgraded != null) it[Keys.PIN_HASH] = upgraded
+                } else {
+                    val attempts = ((it[Keys.PIN_FAILURES] ?: 0) + 1).coerceAtMost(20)
+                    it[Keys.PIN_FAILURES] = attempts
+                    if (attempts >= 5) {
+                        val waitMs = (30_000L * (1L shl (attempts - 5).coerceAtMost(5))).coerceAtMost(900_000L)
+                        it[Keys.PIN_RETRY_AT] = System.currentTimeMillis() + waitMs
+                    }
+                }
+            }
+            ok
         }
-        return ok
     }
 
     suspend fun setThemeMode(m: ThemeMode) = context.dataStore.edit { it[Keys.THEME] = m.name }
@@ -99,12 +127,19 @@ class PreferencesRepository(private val context: Context) {
         cur.remove(q); cur.add(0, q)
         context.dataStore.edit { it[Keys.RECENT_SEARCHES] = cur.take(8).joinToString("\n") }
     }
-    suspend fun setAi(baseUrl: String, model: String, apiKey: String, enabled: Boolean) =
-        context.dataStore.edit {
-            it[Keys.AI_BASE_URL] = baseUrl; it[Keys.AI_MODEL] = model
-            it[Keys.AI_API_KEY] = if (apiKey.isBlank()) "" else Crypto.encrypt(apiKey)
-            it[Keys.AI_ENABLED] = enabled
+    suspend fun setAi(baseUrl: String, model: String, apiKey: String?, enabled: Boolean) =
+        withContext(Dispatchers.IO) {
+            // Null preserves the existing credential; empty explicitly removes it.
+            val encrypted = apiKey?.let { if (it.isBlank()) "" else Crypto.encrypt(it) }
+            context.dataStore.edit {
+                it[Keys.AI_BASE_URL] = baseUrl; it[Keys.AI_MODEL] = model
+                if (encrypted != null) it[Keys.AI_API_KEY] = encrypted
+                it[Keys.AI_ENABLED] = enabled
+            }
         }
+
+    suspend fun clearAiKey() = context.dataStore.edit { it.remove(Keys.AI_API_KEY) }
+
 }
 
 /** AES-GCM via the Android Keystore for user-supplied API keys. */
@@ -128,14 +163,14 @@ object Crypto {
             }
     }.getOrNull()
 
-    fun encrypt(plain: String): String = runCatching {
-        val key = secretKey() ?: return ""
+    fun encrypt(plain: String): String {
+        val key = secretKey() ?: error("Android Keystore is unavailable")
         val cipher = javax.crypto.Cipher.getInstance(TRANSFORMATION)
         cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, key)
         val iv = cipher.iv
         val encrypted = cipher.doFinal(plain.toByteArray(Charsets.UTF_8))
-        Base64.encodeToString(iv, Base64.NO_WRAP) + ":" + Base64.encodeToString(encrypted, Base64.NO_WRAP)
-    }.getOrDefault("")
+        return Base64.encodeToString(iv, Base64.NO_WRAP) + ":" + Base64.encodeToString(encrypted, Base64.NO_WRAP)
+    }
 
     fun decrypt(stored: String): String {
         if (stored.isBlank()) return ""
@@ -143,7 +178,7 @@ object Crypto {
         val parts = stored.split(":")
         if (parts.size != 2) return stored // unencrypted legacy value
         return runCatching {
-            val key = secretKey() ?: return stored
+            val key = secretKey() ?: return ""
             val iv = Base64.decode(parts[0], Base64.NO_WRAP)
             val data = Base64.decode(parts[1], Base64.NO_WRAP)
             val cipher = javax.crypto.Cipher.getInstance(TRANSFORMATION)

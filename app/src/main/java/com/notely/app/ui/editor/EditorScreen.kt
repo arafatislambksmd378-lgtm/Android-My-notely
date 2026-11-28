@@ -3,6 +3,7 @@ package com.notely.app.ui.editor
 import android.content.Intent
 import android.net.Uri
 import android.speech.RecognizerIntent
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -31,6 +32,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.text.TextStyle
@@ -52,6 +54,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 private val STYLES = listOf(
     "Normal", "Title", "Subtitle",
@@ -83,6 +90,11 @@ fun EditorScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val focusManager = LocalFocusManager.current
+    fun navigateBack() {
+        // Navigation mutates Android LifecycleRegistry and must use the Android main dispatcher,
+        // even when a test/composition coroutine resumes on a different apply dispatcher.
+        app.scope.launch(Dispatchers.Main.immediate) { onBack() }
+    }
     val autosave by app.prefs.autosave.collectAsStateWithLifecycle(initialValue = true)
     val spellcheck by app.prefs.spellcheck.collectAsStateWithLifecycle(initialValue = true)
     val noteFlow = remember(noteId) { app.notes.observeById(noteId) }
@@ -94,6 +106,10 @@ fun EditorScreen(
     var title by remember { mutableStateOf("Untitled") }
     var cardColorIndex by remember { mutableStateOf(0) }
     var loaded by remember { mutableStateOf(false) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    var editRevision by remember { mutableStateOf(0L) }
+    val recoverySession = remember(noteId) { app.recovery.beginSession(noteId) }
+    var leaving by remember { mutableStateOf(false) }
 
     var saveStatus by remember { mutableStateOf("Saved") }
     var dirty by remember { mutableStateOf(false) }
@@ -133,49 +149,48 @@ fun EditorScreen(
     val listState = rememberLazyListState()
     var pendingSelection by remember { mutableStateOf<Pair<Int, IntRange>?>(null) }
 
-    // ---- Load once ----
+    // A failed read is not an empty document. Keep the original bytes untouched.
     LaunchedEffect(noteId) {
-        val n = app.notes.getById(noteId)
-        if (n != null) {
-            val (b, p) = DocumentSerializer.deserialize(n.documentJson)
+        runCatching {
+            val (n, recovered) = app.recovery.load(noteId)
+            val (b, p) = withContext(Dispatchers.Default) {
+                DocumentSerializer.deserializeForEditing(n.documentJson)
+            }
             blocks = b.ifEmpty { listOf(DocumentBlock()) }
             pageSetup = p
             title = n.title
             cardColorIndex = n.cardColorIndex
-        }
-        loaded = true
+            if (recovered) saveStatus = "Recovered — changes protected on device"
+            loaded = true
+        }.onFailure { loadError = "This document could not be opened safely. Its stored content has not been changed." }
     }
 
     fun serialize() = DocumentSerializer.serialize(blocks, pageSetup)
 
-    fun saveNow() {
-        if (!loaded || readOnly) return
-        saveStatus = "Saving…"
-        val json = serialize()
-        val t = title.ifBlank { "Untitled" }
-        scope.launch(Dispatchers.IO) {
-            runCatching { app.notes.updateContent(noteId, t, json) }
-                .onSuccess {
-                    withContext(Dispatchers.Main) {
-                        dirty = false
-                        saveStatus = TimeFmt.savedLine(System.currentTimeMillis())
-                    }
-                }
-                .onFailure {
-                    withContext(Dispatchers.Main) { saveStatus = "Save failed — will retry" }
-                }
+    fun persistSnapshot(commit: Boolean): Job? {
+        if (!loaded || readOnly) return null
+        val revision = editRevision
+        saveStatus = if (commit) "Saving…" else "Protecting recovery copy…"
+        return app.recovery.write(noteId, recoverySession, title.ifBlank { "Untitled" }, blocks, pageSetup, commit) { result ->
+            if (editRevision == revision) {
+                result.onSuccess {
+                    if (commit) dirty = false
+                    saveStatus = if (commit) TimeFmt.savedLine(System.currentTimeMillis()) else "Recovery copy saved"
+                }.onFailure { saveStatus = "Save failed — tap Save to retry" }
+            }
         }
     }
 
+    fun saveNow(): Job? = persistSnapshot(commit = true)
+
     fun scheduleSave() {
+        editRevision++
         dirty = true
         if (readOnly) return
-        if (!autosave) {
-            saveStatus = "Unsaved changes"
-            return
-        }
+        // Journal every change immediately, even when normal auto-save is disabled.
+        persistSnapshot(commit = false)
         saveJob?.cancel()
-        saveJob = scope.launch {
+        if (autosave) saveJob = scope.launch {
             delay(700)
             saveNow()
         }
@@ -222,7 +237,9 @@ fun EditorScreen(
     fun openUrl(url: String) {
         val normalized = if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("mailto:")) url
         else "https://$url"
-        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(normalized))) }
+        if (com.notely.app.util.SafeLinks.isAllowed(normalized)) {
+            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(normalized))) }
+        }
     }
 
     // ---- Launchers ----
@@ -301,11 +318,50 @@ fun EditorScreen(
 
     // Leave the editor: always flush pending changes first.
     fun leave() {
-        if (!readOnly && dirty) saveNow()
-        onBack()
+        if (leaving) return
+        leaving = true
+        saveJob?.cancel()
+        scope.launch {
+            if (!readOnly && dirty) saveNow()?.join()
+            leaving = false
+            // Keep the editor open when a flush failed (or a newer edit arrived).
+            if (!dirty || readOnly || !loaded) navigateBack()
+        }
     }
 
-    Column(Modifier.fillMaxSize().background(c.bg)) {
+    BackHandler { leave() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val flushLatest by rememberUpdatedState(newValue = {
+        if (dirty && loaded && !readOnly) {
+            saveJob?.cancel()
+            saveNow()
+        }
+        Unit
+    })
+    DisposableEffect(lifecycleOwner, noteId) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) flushLatest()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            flushLatest()
+        }
+    }
+
+    if (loadError != null) {
+        Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
+            Text(loadError!!)
+            TextButton(onClick = onBack) { Text("Back to notebooks") }
+        }
+        return
+    }
+    if (!loaded) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        return
+    }
+
+    EditorColumn(Modifier.fillMaxSize().background(c.bg)) {
         // ---------- Top bar (reference design) ----------
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
@@ -321,12 +377,12 @@ fun EditorScreen(
                     enabled = !readOnly,
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
                     keyboardActions = KeyboardActions(onDone = { saveNow(); focusManager.clearFocus() }),
-                    modifier = Modifier.fillMaxWidth()
+                    modifier = Modifier.fillMaxWidth().testTag("editor-title")
                 )
                 Text(
                     if (readOnly) "Read-only preview · ${stats.pages} page(s)"
                     else buildString {
-                        append(if (dirty && !autosave) "Unsaved" else saveStatus)
+                        append(if (dirty && !autosave) "Unsaved · $saveStatus" else saveStatus)
                         append(" · ${stats.words} words")
                     },
                     fontSize = 11.sp, color = if (dirty && !autosave) c.primary else c.text2,
@@ -598,6 +654,8 @@ fun EditorScreen(
         }
     }
 
+    // Non-inline composition boundaries keep the large editor below dex verifier register pressure.
+    EditorSection {
     // ---------- Sheets & dialogs ----------
     if (showOptions) {
         NoteOptionsSheet(
@@ -610,28 +668,35 @@ fun EditorScreen(
             onBookmarks = { showOptions = false; showBookmarks = true },
             onTags = { showOptions = false; showTags = true },
             onExport = { showOptions = false; showExport = true },
-            onVersions = { showOptions = false; showVersions = true },
+            onVersions = {
+                showOptions = false
+                saveJob?.cancel()
+                scope.launch {
+                    if (dirty) saveNow()?.join()
+                    if (!dirty) showVersions = true
+                }
+            },
             onAi = { showOptions = false; showAi = true },
             onTemplates = { showOptions = false; showTemplates = true },
-            onMove = { nbId -> scope.launch { app.notes.move(noteId, nbId); onBack() } },
+            onMove = { nbId -> scope.launch { app.notes.move(noteId, nbId); navigateBack() } },
             onDelete = { showOptions = false; showDeleteConfirm = true },
             onColor = { idx -> cardColorIndex = idx; scope.launch { app.notes.setColor(noteId, idx) } },
             onPin = { scope.launch { app.notes.setPinned(noteId, !(note?.pinned ?: false)) } },
             onFavorite = { scope.launch { app.notes.setFavorite(noteId, !(note?.favorite ?: false)) } },
-            onArchive = { scope.launch { app.notes.setArchived(noteId, true); onBack() } },
+            onArchive = { scope.launch { app.notes.setArchived(noteId, true); navigateBack() } },
             onCopy = {
                 scope.launch {
                     // Abort any queued debounce first: its delayed save would otherwise
                     // overwrite the copy's content with this (correct) document a moment
                     // after duplication, or race the read below.
                     saveJob?.cancel()
-                    val t = title.ifBlank { "Untitled" }
-                    runCatching { app.notes.updateContent(noteId, t, serialize()) }
+                    saveNow()?.join()
+                    if (dirty) return@launch
                     val copyId = app.notes.duplicate(noteId)
                     if (copyId > 0) {
                         val tagsOfNote = runCatching { app.tags.tagsForNote(noteId).first() }.getOrDefault(emptyList())
                         app.tags.copyTags(noteId, copyId, tagsOfNote)
-                        onBack()
+                        navigateBack()
                     }
                 }
             },
@@ -679,6 +744,8 @@ fun EditorScreen(
             onScan = { showOcr = true }
         )
     }
+    }
+    EditorSection {
     if (showPageSetup) {
         PageSetupSheet(
             initial = pageSetup,
@@ -731,7 +798,7 @@ fun EditorScreen(
                 scope.launch {
                     val n = app.notes.getById(noteId)
                     if (n != null) {
-                        val (b, p) = DocumentSerializer.deserialize(n.documentJson)
+                        val (b, p) = DocumentSerializer.deserializeForEditing(n.documentJson)
                         blocks = b.ifEmpty { listOf(DocumentBlock()) }
                         pageSetup = p
                     }
@@ -761,9 +828,9 @@ fun EditorScreen(
             onDismiss = { showTemplates = false },
             onUse = { json ->
                 pushUndo()
-                val (b, p) = DocumentSerializer.deserialize(json)
-                updateBlocks(b.ifEmpty { listOf(DocumentBlock()) })
+                val (b, p) = DocumentSerializer.deserializeForEditing(json)
                 pageSetup = p
+                updateBlocks(b.ifEmpty { listOf(DocumentBlock()) })
                 showTemplates = false
             },
             onSaveCurrent = {
@@ -771,6 +838,8 @@ fun EditorScreen(
             }
         )
     }
+    }
+    EditorSection {
     if (showWordCount) {
         AlertDialog(
             onDismissRequest = { showWordCount = false },
@@ -846,6 +915,8 @@ fun EditorScreen(
             showBookmarkDialog = false
         })
     }
+    }
+    EditorSection {
     if (showDrawing) {
         DrawingScreen(
             onDismiss = { showDrawing = false },
@@ -880,7 +951,7 @@ fun EditorScreen(
             text = { Text("The note moves to Trash and can be restored later. You can empty the trash from the library screen.") },
             confirmButton = {
                 TextButton(onClick = {
-                    scope.launch { app.notes.setTrashed(noteId, true); showDeleteConfirm = false; onBack() }
+                    scope.launch { app.notes.setTrashed(noteId, true); showDeleteConfirm = false; navigateBack() }
                 }) { Text("Move to trash", color = MaterialTheme.colorScheme.error) }
             },
             dismissButton = { TextButton(onClick = { showDeleteConfirm = false }) { Text("Cancel") } }
@@ -920,6 +991,18 @@ fun EditorScreen(
             showShapePicker = false
         }
     }
+    }
+}
+
+/** Non-inline boundaries: do not inline these back into the monolithic editor method. */
+@Composable
+private fun EditorColumn(modifier: Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Column(modifier = modifier, content = content)
+}
+
+@Composable
+private fun EditorSection(content: @Composable () -> Unit) {
+    content()
 }
 
 // ---------------- small helpers/composables ----------------

@@ -46,8 +46,9 @@ class MainActivity : ComponentActivity() {
         setContent {
             val mode by app.prefs.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
             val accent by app.prefs.accent.collectAsStateWithLifecycle(initialValue = Accent.PURPLE)
-            val lockEnabled by app.prefs.appLock.collectAsStateWithLifecycle(initialValue = false)
-            val pinHash by app.prefs.pinHash.collectAsStateWithLifecycle(initialValue = "")
+            val lockConfiguration by app.prefs.lockConfiguration.collectAsStateWithLifecycle(initialValue = null)
+            val lockEnabled = lockConfiguration?.first ?: false
+            val pinHash = lockConfiguration?.second.orEmpty()
 
             var unlocked by remember { mutableStateOf(false) }
             val lifecycle = LocalLifecycleOwner.current
@@ -67,7 +68,9 @@ class MainActivity : ComponentActivity() {
                 val c = LocalNotelyColors.current
                 Box(Modifier.fillMaxSize().background(c.bg)) {
                     val needsLock = lockEnabled && pinHash.isNotBlank() && !unlocked
-                    if (needsLock) {
+                    if (lockConfiguration == null) {
+                        androidx.compose.material3.CircularProgressIndicator()
+                    } else if (needsLock) {
                         AppLockGate(app) { unlocked = true }
                     } else {
                         NotelyNavHost(

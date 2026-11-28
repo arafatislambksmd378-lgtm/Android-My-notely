@@ -52,7 +52,7 @@ no parallel incompatible models.
 Deserialization is defensive: a corrupt or unknown block is skipped instead of discarding the whole
 note, and a truncated document JSON still yields every block that parsed.
 
-## Database schema (Room v2)
+## Database schema (Room v3)
 
 - `notebooks(id, name, icon, colorIndex, archived, trashed, createdAt, updatedAt)`
 - `notes(id, notebookId, title, documentJson, cardColorIndex, pinned, favorite, archived, trashed, reminderAt, viewMode, createdAt, updatedAt)` — indexed on notebookId/updatedAt/trashed. `viewMode` ("edit"/"view") was added by `MIGRATION_1_2`.
@@ -61,8 +61,7 @@ note, and a truncated document JSON still yields every block that parsed.
   `footnotes(id, noteId, refNumber, text)`, `versions(id, noteId, documentJson, createdAt)` (retention: 30/note),
   `templates(id, name, documentJson, builtin)`, `reminders(id, noteId, atMillis, label)`.
 
-Search uses indexed `LIKE` over `title` + `documentJson` (avoids loading full contents for previews;
-previews deserialize only the first non-blank block).
+Search uses wildcard `LIKE` over `title` + `documentJson`; leading-wildcard searches scan content rather than using a full-text index. Previews derive from stored document JSON.
 
 ## Editor engine
 
@@ -126,4 +125,17 @@ previews deserialize only the first non-blank block).
 - Scanner workflow = camera/gallery → OCR → editable text + PDF-ready export (no OpenCV edge detection).
 - Spell check uses the platform `SpellCheckerService`; a device without a spell-checker pack shows no
   squiggles. Checking is debounced 450 ms and bounded to 20 000 characters per block.
-- FTS5 was replaced with indexed `LIKE` for Room compatibility (documented tradeoff).
+- Search currently uses wildcard `LIKE`; this is not indexed full-content search. A compatible FTS migration remains unfinished.
+
+## Recovery and local backup continuation
+
+Room schema 3 adds `recovery_drafts` (note FK/cascade, title, JSON, SHA-256, base generation and timestamp).
+`recovery/DocumentRecovery` is an application-owned per-note ordered writer; editor changes are journaled
+without waiting for Activity callbacks or normal debounce. Session tokens reject obsolete editors.
+Direct content updates/version restoration invalidate stale drafts transactionally.
+
+`backup/LocalBackup` exports logical Room records plus referenced private media in a versioned checksum ZIP.
+SAF controls are isolated in `ui/settings/BackupPanel`. Restore never REPLACEs existing records: it remaps IDs,
+rewrites known media fields and commits copies transactionally. Backups exclude credentials/models and are
+explicitly unencrypted. Limits and durability boundaries: [BACKUP-AND-RECOVERY.md](BACKUP-AND-RECOVERY.md).
+Current executed acceptance results: [FINAL-COMPLETION-2026-11-28.md](FINAL-COMPLETION-2026-11-28.md).

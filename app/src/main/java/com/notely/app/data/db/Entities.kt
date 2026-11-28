@@ -93,3 +93,17 @@ data class ReminderEntity(
     val atMillis: Long,
     val label: String = "Reminder"
 )
+
+/** Last acknowledged valid editor snapshot, separate from the main note row. */
+@Entity(tableName = "recovery_drafts", foreignKeys = [androidx.room.ForeignKey(
+    entity = NoteEntity::class, parentColumns = ["id"], childColumns = ["noteId"],
+    onDelete = androidx.room.ForeignKey.CASCADE
+)])
+data class RecoveryDraftEntity(
+    @PrimaryKey val noteId: Long,
+    val title: String,
+    val documentJson: String,
+    val sha256: String,
+    val baseUpdatedAt: Long,
+    val stagedAt: Long
+)

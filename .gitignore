@@ -10,3 +10,11 @@ captures/
 .cxx/
 *.apk
 *.aab
+
+# Private signing material is provisioned only in temporary CI storage.
+*.jks
+*.keystore
+*.p12
+
+__pycache__/
+*.pyc

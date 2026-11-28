@@ -1,15 +1,28 @@
 # Notely — Offline-First Android Notebook & Document Editor
 
+Current continuation status and delivery: [FINAL-COMPLETION-2026-11-28.md](docs/FINAL-COMPLETION-2026-11-28.md).
+New: Room recovery journal, local backup/restore, and optional CI signing configuration.
+See [backup/recovery contracts and limits](docs/BACKUP-AND-RECOVERY.md). Full production acceptance is **not complete**.
+
 Professional offline-first notebook, rich-text document editor and productivity app.
 Premium Soft Claymorphism + Material 3, built with Kotlin + Jetpack Compose + Room.
 
-**Primary color:** `#8950F5` · **Min SDK:** 26 (Android 8.0) · **Target SDK:** 34 · **Version:** 1.0.0
+**Primary color:** `#8950F5` · **Min SDK:** 26 (Android 8.0) · **Target SDK:** 34 · **Version:** 1.0.1 (versionCode 2)
 
 ## Build & install (APK)
 
-Delivery report (artifacts, hashes, feature matrix, status): [`docs/DELIVERY.md`](docs/DELIVERY.md).
+Build 50 repair/acceptance report: [`docs/REPAIR-REPORT-2026-11-28.md`](docs/REPAIR-REPORT-2026-11-28.md).
+Baseline inventory: [`docs/BASELINE-2026-11-28.md`](docs/BASELINE-2026-11-28.md).
+Historical delivery report: [`docs/DELIVERY.md`](docs/DELIVERY.md).
 
-> **Status: built, tested and installed.** The APK in this repository was produced by GitHub Actions and
+Historical verified development build: [build 50](https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/tag/ci-build-50)
+(`b9e24db`): compile, **37 JVM tests**, lint and the **7-test Android emulator suite** passed.
+Debug APK is debug-signed/installable; release APK is **unsigned**, not production-ready.
+The acceptance report documents remaining features and the editor runtime crash found and fixed by the new UI regression.
+
+
+> **Production status: NOT READY.** Full offline AI, backup/restore and process-death acceptance remain incomplete.
+> The historical baseline APK was produced by GitHub Actions and
 > installed and launched on an Android 14 (API 34) emulator; see `docs/VERIFICATION.md` for the measured
 > results. Prebuilt artifacts:
 >
@@ -44,11 +57,11 @@ On the emulator: install OK, cold start ~1.5 s, no crash, instrumented tests pas
 ## Run tests
 
 ```bash
-./gradlew testDebugUnitTest          # 27 JVM tests: doc model + export engines + PIN integrity
-./gradlew connectedDebugAndroidTest  # 3 instrumented tests: real PDF output (needs a device)
+./gradlew testDebugUnitTest          # 37 JVM tests: document/export/security/file regressions
+./gradlew connectedDebugAndroidTest  # PDF, Room, editor, backup/restore and journal tests (needs a device)
 ```
 
-## Features (all functional, offline-first)
+## Existing feature inventory (not full acceptance certification)
 
 - **3-tab navigation:** Home, Notebooks, Settings (persistent bottom bar, state preserved).
 - **Home:** time-aware greeting, live search (title + document content + notebook), notebook
@@ -85,7 +98,7 @@ On the emulator: install OK, cold start ~1.5 s, no crash, instrumented tests pas
 - **Templates:** 16 built-ins (meeting notes, journal, planner, CV, invoice…) + save-current-as-template,
   all creating real editable documents.
 - **Settings:** workspace name/icon, light/dark/system theme, accent (purple/green/blue/yellow),
-  app lock (salted SHA-256 PIN, re-locks when backgrounded), editor defaults (font/size/line spacing),
+  app lock (salted PBKDF2 PIN with legacy migration, re-locks when backgrounded), editor defaults (font/size/line spacing),
   auto-save, spelling toggle, storage usage + cache clear, library (templates), about, optional AI
   provider config (no hardcoded keys) and explicit on-device model downloads.
 - **AI assistant (optional):** device capability check (RAM/storage/arch → recommended model class),
@@ -95,9 +108,9 @@ On the emulator: install OK, cold start ~1.5 s, no crash, instrumented tests pas
   Settings also offers explicit GGUF downloads (Qwen2.5-0.5B / SmolLM2-1.7B / Llama-3.2-3B) with
   RAM + storage compatibility checks and progress; the app states plainly that no inference runtime is
   bundled yet. Core app never depends on any of it.
-- **Search:** indexed SQLite `LIKE` over title + serialized document (no full-content load for previews).
-- **Data integrity:** Room transactions, foreign-key-friendly schema, version retention, trash (no silent
-  permanent delete), crash-safe debounced saves.
+- **Search:** SQLite wildcard `LIKE` over title + serialized document; this is not indexed full-content search.
+- **Data integrity:** Room transactions, version retention and trash. Confirmed repository transaction and
+  editor-navigation save defects are repaired; no claim of complete process-death recovery or foreign-key enforcement.
 
 ## Architecture
 
@@ -120,3 +133,19 @@ app/src/main/java/com/notely/app/
   util/                                — time formatting, PIN hashing
 app/src/test/                          — JVM unit tests (model + exporters)
 ```
+
+## Release signing and process-recovery verification
+
+The existing Android CI workflow builds and verifies candidates; `release.yml` provides a manual reusable entrypoint.
+Production signing is optional and requires **all four** repository Actions secrets:
+`NOTELY_KEYSTORE_BASE64`, `NOTELY_KEYSTORE_PASSWORD`, `NOTELY_KEY_ALIAS`, `NOTELY_KEY_PASSWORD`.
+Do not paste them into issues/chat or commit a keystore. With no secrets, CI publishes a debug-signed APK and an explicitly **unsigned** release candidate, never an invented production signature.
+
+CI drives actual `am force-stop` and app-UID SIGKILL between three instrumentation sessions.
+This tests acknowledged Room journal snapshots, not every uncommitted keystroke or hardware power loss.
+The manual backup is unencrypted, copy-only on restore, excludes credentials/models, and has explicit size limits.
+See the current report for executed results and unfinished AI/import/FTS/scanner/UI acceptance work.
+
+## Final continuation candidate: Build 59
+
+Published version **1.0.1 (2)** from `5a99db0`: [release and downloads](https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/tag/notely-46105415788-1), [successful workflow](https://github.com/arafatislambksmd378-lgtm/Android-My-notely/actions/runs/46105415788). **37 JVM + 15 Android tests, zero failures/skips**, lint and exact debug APK install/launch passed; separate Force Stop and SIGKILL recovery passed. Debug-signed and unsigned artifacts only; **NOT production ready**. Full hashes, limitations and acceptance matrix: [final completion report](docs/FINAL-COMPLETION-2026-11-28.md).

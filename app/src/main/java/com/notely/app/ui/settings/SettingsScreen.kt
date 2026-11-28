@@ -168,7 +168,10 @@ fun SettingsScreen(app: NotelyApp) {
                         ClayPrimaryButton("Save") {
                             scope.launch {
                                 if (pinDraft.length >= 4) {
-                                    app.prefs.setPinHash(Security.hashPin(pinDraft))
+                                    val newHash = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                                        Security.hashPin(pinDraft)
+                                    }
+                                    app.prefs.setPinHash(newHash)
                                     pinMsg = "PIN saved — it will be required next time the app opens."
                                     pinDraft = ""
                                 } else pinMsg = "PIN must be at least 4 digits."
@@ -180,7 +183,7 @@ fun SettingsScreen(app: NotelyApp) {
                         Text(pinMsg, fontSize = 12.sp, color = c.text2)
                     }
                     Text(
-                        "The PIN is stored as a SHA-256 hash on this device and is never transmitted.",
+                        "The PIN is stored as a salted PBKDF2 verifier on this device and is never transmitted.",
                         fontSize = 11.sp, color = c.text2
                     )
                 }
@@ -232,7 +235,7 @@ fun SettingsScreen(app: NotelyApp) {
                         Text("Off by default · core app works fully offline", fontSize = 12.sp, color = c.text2)
                     }
                     Switch(checked = aiEnabled, onCheckedChange = { on ->
-                        scope.launch { app.prefs.setAi(aiUrlDraft, aiModelDraft, "", on) }
+                        scope.launch { app.prefs.setAi(aiUrlDraft, aiModelDraft, null, on) }
                     })
                 }
                 Spacer(Modifier.height(10.dp))
@@ -263,9 +266,22 @@ fun SettingsScreen(app: NotelyApp) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ClayPrimaryButton("Save AI settings") {
                         scope.launch {
-                            app.prefs.setAi(aiUrlDraft, aiModelDraft, aiKeyDraft, aiEnabled)
+                            try {
+                                app.prefs.setAi(aiUrlDraft, aiModelDraft, aiKeyDraft.takeIf { it.isNotBlank() }, aiEnabled)
+                                aiKeyDraft = ""
+                                aiMsg = "Saved securely."
+                            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                aiMsg = "Could not save securely. Existing settings were not changed."
+                            }
+                        }
+                    }
+                    ClaySoftButton("Remove key") {
+                        scope.launch {
+                            app.prefs.clearAiKey()
                             aiKeyDraft = ""
-                            aiMsg = "Saved securely."
+                            aiMsg = "API key removed."
                         }
                     }
                     ClaySoftButton("Device check") { caps = AiAssistant.deviceCaps(app) }
@@ -287,6 +303,8 @@ fun SettingsScreen(app: NotelyApp) {
             }
         }
 
+        item { BackupPanel(app) }
+
         item { SectionLabel("About") }
         item {
             ClayCard {
@@ -295,7 +313,7 @@ fun SettingsScreen(app: NotelyApp) {
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text("Notely", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = c.text)
-                        Text("Version 1.0.0 · Premium notes", fontSize = 12.sp, color = c.text2)
+                        Text("Version ${androidx.compose.ui.res.stringResource(com.notely.app.R.string.app_version_name)} · Premium notes", fontSize = 12.sp, color = c.text2)
                     }
                     Text("$noteCount notes", fontSize = 12.sp, color = c.text2)
                 }

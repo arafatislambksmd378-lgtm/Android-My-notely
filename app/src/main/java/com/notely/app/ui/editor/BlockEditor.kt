@@ -16,6 +16,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.focus.onFocusChanged
@@ -364,7 +365,7 @@ private fun TextBlock(
                     inner()
                 }
             },
-            modifier = Modifier
+            modifier = Modifier.testTag("block-${block.id}")
                 .weight(1f)
                 .padding(start = (block.indentLevel * 18).dp, top = 2.dp, bottom = 2.dp)
                 .onFocusChangedCompat { isFocused -> if (isFocused) onFocus() }

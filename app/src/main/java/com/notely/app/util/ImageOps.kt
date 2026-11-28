@@ -6,13 +6,14 @@ import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import java.io.File
 import java.io.FileOutputStream
+import java.util.UUID
 
 /** Real bitmap operations used by image insert / rotate / crop / compress. */
 object ImageOps {
 
     /** Decodes with downsampling so large camera photos never blow the heap on 3 GB devices. */
     fun decode(path: String?, maxDim: Int = 2000): Bitmap? {
-        if (path == null) return null
+        if (path == null || maxDim <= 0) return null
         val file = File(path)
         if (!file.exists()) return null
         return runCatching {
@@ -25,59 +26,52 @@ object ImageOps {
         }.getOrNull()
     }
 
+    private fun directory(context: Context, name: String): File {
+        require(name in setOf("images", "drawings", "attachments")) { "Invalid storage directory" }
+        return File(context.filesDir, name).apply { check(isDirectory || mkdirs()) }
+    }
+
     fun save(context: Context, bmp: Bitmap, dirName: String = "images"): String {
-        val dir = File(context.filesDir, dirName).apply { mkdirs() }
-        val file = File(dir, "img_${System.currentTimeMillis()}.jpg")
-        FileOutputStream(file).use { out -> bmp.compress(Bitmap.CompressFormat.JPEG, 90, out) }
+        val file = File(directory(context, dirName), "img_${UUID.randomUUID()}.jpg")
+        PrivateFiles.atomicWrite(file) { check(bmp.compress(Bitmap.CompressFormat.JPEG, 90, it)) }
         return file.absolutePath
     }
 
     fun savePng(context: Context, bmp: Bitmap, dirName: String = "images"): String {
-        val dir = File(context.filesDir, dirName).apply { mkdirs() }
-        val file = File(dir, "img_${System.currentTimeMillis()}.png")
-        FileOutputStream(file).use { out -> bmp.compress(Bitmap.CompressFormat.PNG, 100, out) }
+        val file = File(directory(context, dirName), "img_${UUID.randomUUID()}.png")
+        PrivateFiles.atomicWrite(file) { check(bmp.compress(Bitmap.CompressFormat.PNG, 100, it)) }
         return file.absolutePath
     }
 
-    /** Copies an external image URI into app-private storage (no persisted URI permission needed). */
-    /**
-     * Copies an external image URI into app-private storage, always transcoding
-     * to JPEG. Transcoding matters for two reasons: a picked PNG/HEIC/WebP would
-     * otherwise be stored under a `.jpg` name (so DOCX/ODT/PDF readers see the
-     * wrong container type), and huge camera photos are downscaled here.
-     */
+    /** Stage a bounded stream, read bounds first, then decode a sampled bitmap (never the full photo). */
     fun import(context: Context, uri: android.net.Uri): String? {
-        val dest = File(File(context.filesDir, "images").apply { mkdirs() }, "img_${System.currentTimeMillis()}.jpg")
-        return runCatching {
-            val bmp = context.contentResolver.openInputStream(uri)?.use { input ->
-                BitmapFactory.decodeStream(input)
-            } ?: return@runCatching null
-            val maxDim = 2000
-            val scale = minOf(1f, maxDim.toFloat() / maxOf(bmp.width, bmp.height))
-            val outBmp = if (scale < 1f) {
-                Bitmap.createScaledBitmap(
-                    bmp,
-                    (bmp.width * scale).toInt().coerceAtLeast(1),
-                    (bmp.height * scale).toInt().coerceAtLeast(1),
-                    true
-                )
-            } else bmp
-            FileOutputStream(dest).use { outBmp.compress(Bitmap.CompressFormat.JPEG, 88, it) }
-            if (outBmp !== bmp) outBmp.recycle()
-            bmp.recycle()
-            dest.absolutePath
-        }.getOrNull()
+        var staging: File? = null
+        var bitmap: Bitmap? = null
+        return try {
+            val mime = context.contentResolver.getType(uri)
+            require(mime == null || mime.startsWith("image/")) { "Not an image" }
+            val staged = context.contentResolver.openInputStream(uri)?.use { input ->
+                PrivateFiles.copy(input, context.cacheDir, "image-import", 50L * 1024 * 1024)
+            } ?: return null
+            staging = staged
+            val decoded = decode(staged.absolutePath) ?: return null
+            bitmap = decoded
+            save(context, decoded)
+        } catch (_: Exception) {
+            null
+        } finally {
+            bitmap?.recycle()
+            staging?.delete()
+        }
     }
 
+    /** Unique names prevent a second attachment with the same display name destroying the first. */
     fun importBytes(context: Context, uri: android.net.Uri, dirName: String = "attachments"): String? = runCatching {
-        val dir = File(context.filesDir, dirName).apply { mkdirs() }
-        val name = queryName(context, uri) ?: "att_${System.currentTimeMillis()}"
-        val safe = name.replace(Regex("[^\\w.\\-]"), "_")
-        val dest = File(dir, safe)
+        val dir = directory(context, dirName)
+        val name = queryName(context, uri) ?: "attachment"
         context.contentResolver.openInputStream(uri)?.use { input ->
-            dest.outputStream().use { output -> input.copyTo(output) }
+            PrivateFiles.copy(input, dir, name).absolutePath
         }
-        dest.absolutePath
     }.getOrNull()
 
     fun queryName(context: Context, uri: android.net.Uri): String? = runCatching {

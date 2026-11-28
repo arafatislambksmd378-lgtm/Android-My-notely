@@ -57,7 +57,7 @@ object AiAssistant {
     fun modelDir(context: Context): File = File(context.filesDir, "ai_models").apply { mkdirs() }
 
     fun installedModels(context: Context): List<File> =
-        modelDir(context).listFiles { f -> f.isFile && f.length() > 0 }?.toList() ?: emptyList()
+        modelDir(context).listFiles { f -> f.isFile && f.extension == "gguf" && f.length() > 0 }?.toList() ?: emptyList()
 
     fun modelsSizeBytes(context: Context): Long = installedModels(context).sumOf { it.length() }
 
@@ -164,21 +164,43 @@ object AiAssistant {
         require(baseUrl.isNotBlank()) { "AI provider URL is not configured (Settings → AI)." }
         require(model.isNotBlank()) { "AI model is not configured (Settings → AI)." }
         val url = URL(baseUrl.trimEnd('/') + "/chat/completions")
+        require(url.protocol == "https" && url.host.isNotBlank() && url.userInfo == null) {
+            "Use an HTTPS provider URL without embedded credentials."
+        }
         val conn = url.openConnection() as HttpURLConnection
-        conn.requestMethod = "POST"
-        conn.connectTimeout = 30_000
-        conn.readTimeout = 60_000
-        conn.setRequestProperty("Content-Type", "application/json")
-        if (apiKey.isNotBlank()) conn.setRequestProperty("Authorization", "Bearer $apiKey")
-        val body = """{"model":"${model.replace("\"", "")}","messages":[{"role":"user","content":${jsonString(userPrompt)}}],"temperature":0.7}"""
-        conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
-        val code = conn.responseCode
-        val stream = if (code in 200..299) conn.inputStream else conn.errorStream
-        val resp = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-        conn.disconnect()
-        if (code !in 200..299) throw IllegalStateException("AI provider returned HTTP $code")
-        return extractContent(resp)
+        try {
+            conn.requestMethod = "POST"
+            conn.doOutput = true
+            // Never forward document content or credentials through a provider redirect.
+            conn.instanceFollowRedirects = false
+            conn.connectTimeout = 30_000
+            conn.readTimeout = 60_000
+            conn.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            if (apiKey.isNotBlank()) conn.setRequestProperty("Authorization", "Bearer $apiKey")
+            val body = requestBody(model, userPrompt)
+            conn.outputStream.use { it.write(body.toByteArray(Charsets.UTF_8)) }
+            val code = conn.responseCode
+            if (code !in 200..299) throw IllegalStateException("AI provider returned HTTP $code")
+            val resp = conn.inputStream.bufferedReader(Charsets.UTF_8).use { reader ->
+                val text = StringBuilder()
+                val buffer = CharArray(8192)
+                while (true) {
+                    val count = reader.read(buffer)
+                    if (count < 0) break
+                    require(text.length + count <= 2_000_000) { "AI response exceeds the safety limit" }
+                    text.append(buffer, 0, count)
+                }
+                text.toString()
+            }
+            return extractContent(resp)
+        } finally { conn.disconnect() }
     }
+
+    internal fun requestBody(model: String, prompt: String): String = org.json.JSONObject()
+        .put("model", model)
+        .put("messages", org.json.JSONArray().put(org.json.JSONObject().put("role", "user").put("content", prompt)))
+        .put("temperature", 0.7)
+        .toString()
 
     /**
      * Pulls `choices[0].message.content` out of a chat-completions response.

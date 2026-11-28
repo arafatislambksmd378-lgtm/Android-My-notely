@@ -270,3 +270,15 @@ interface ReminderDao {
     @Query("SELECT * FROM reminders WHERE atMillis > :now ORDER BY atMillis ASC")
     suspend fun upcoming(now: Long): List<ReminderEntity>
 }
+
+@Dao
+interface RecoveryDao {
+    @Query("SELECT * FROM recovery_drafts WHERE noteId = :id")
+    suspend fun get(id: Long): RecoveryDraftEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(draft: RecoveryDraftEntity)
+
+    @Query("DELETE FROM recovery_drafts WHERE noteId = :id")
+    suspend fun delete(id: Long)
+}
