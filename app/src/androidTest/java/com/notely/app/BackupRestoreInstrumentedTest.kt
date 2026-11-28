@@ -121,6 +121,19 @@ class BackupRestoreInstrumentedTest {
         } finally { db.close() }
     }
 
+    @Test fun corruptStoredJournalCannotBeSilentlyRehashedByBackup() = runBlocking {
+        val db = database()
+        try {
+            val nb = db.notebookDao().insert(NotebookEntity(name = "Isolated"))
+            val json = DocumentSerializer.serialize(listOf(DocumentBlock()), PageSetup())
+            val id = db.noteDao().insert(NoteEntity(notebookId = nb, documentJson = json))
+            db.recoveryDao().put(RecoveryDraftEntity(id, "title", json, "invalid digest", 0, 0))
+            assertTrue(runCatching { LocalBackup(context, db).export(ByteArrayOutputStream()) }.isFailure)
+            assertEquals("invalid digest", db.recoveryDao().get(id)!!.sha256)
+            assertEquals(json, db.noteDao().getById(id)!!.documentJson)
+        } finally { db.close() }
+    }
+
     @Test fun migrationTwoToThreePreservesExistingData() = runBlocking {
         val name = "migration-${UUID.randomUUID()}.db"
         fun open() = Room.databaseBuilder(context, NotelyDatabase::class.java, name).addMigrations(NotelyDatabase.MIGRATION_2_3).build()

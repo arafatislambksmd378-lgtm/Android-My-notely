@@ -1,3 +1,5 @@
+> Continuation update: see [FINAL-COMPLETION-2026-11-28.md](FINAL-COMPLETION-2026-11-28.md) for schema 3 recovery, local backup/restore, new process tests and current delivery evidence. The earlier figures below remain historical.
+
 > Historical report. For the current repair scope, verification and unresolved acceptance criteria, see [REPAIR-REPORT-2026-11-28.md](REPAIR-REPORT-2026-11-28.md).
 
 # Notely — Delivery Report

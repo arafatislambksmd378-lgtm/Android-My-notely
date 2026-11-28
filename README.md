@@ -1,5 +1,9 @@
 # Notely — Offline-First Android Notebook & Document Editor
 
+Current continuation status and delivery: [FINAL-COMPLETION-2026-11-28.md](docs/FINAL-COMPLETION-2026-11-28.md).
+New: Room recovery journal, local backup/restore, and optional CI signing configuration.
+See [backup/recovery contracts and limits](docs/BACKUP-AND-RECOVERY.md). Full production acceptance is **not complete**.
+
 Professional offline-first notebook, rich-text document editor and productivity app.
 Premium Soft Claymorphism + Material 3, built with Kotlin + Jetpack Compose + Room.
 
@@ -7,7 +11,7 @@ Premium Soft Claymorphism + Material 3, built with Kotlin + Jetpack Compose + Ro
 
 ## Build & install (APK)
 
-Current repair/acceptance report: [`docs/REPAIR-REPORT-2026-11-28.md`](docs/REPAIR-REPORT-2026-11-28.md).
+Build 50 repair/acceptance report: [`docs/REPAIR-REPORT-2026-11-28.md`](docs/REPAIR-REPORT-2026-11-28.md).
 Baseline inventory: [`docs/BASELINE-2026-11-28.md`](docs/BASELINE-2026-11-28.md).
 Historical delivery report: [`docs/DELIVERY.md`](docs/DELIVERY.md).
 
@@ -54,7 +58,7 @@ On the emulator: install OK, cold start ~1.5 s, no crash, instrumented tests pas
 
 ```bash
 ./gradlew testDebugUnitTest          # 37 JVM tests: document/export/security/file regressions
-./gradlew connectedDebugAndroidTest  # 7 tests: PDF, Room transactions, real editor save (needs a device)
+./gradlew connectedDebugAndroidTest  # PDF, Room, editor, backup/restore and journal tests (needs a device)
 ```
 
 ## Existing feature inventory (not full acceptance certification)
@@ -129,3 +133,15 @@ app/src/main/java/com/notely/app/
   util/                                — time formatting, PIN hashing
 app/src/test/                          — JVM unit tests (model + exporters)
 ```
+
+## Release signing and process-recovery verification
+
+The existing Android CI workflow builds and verifies candidates; `release.yml` provides a manual reusable entrypoint.
+Production signing is optional and requires **all four** repository Actions secrets:
+`NOTELY_KEYSTORE_BASE64`, `NOTELY_KEYSTORE_PASSWORD`, `NOTELY_KEY_ALIAS`, `NOTELY_KEY_PASSWORD`.
+Do not paste them into issues/chat or commit a keystore. With no secrets, CI publishes a debug-signed APK and an explicitly **unsigned** release candidate, never an invented production signature.
+
+CI drives actual `am force-stop` and app-UID SIGKILL between three instrumentation sessions.
+This tests acknowledged Room journal snapshots, not every uncommitted keystroke or hardware power loss.
+The manual backup is unencrypted, copy-only on restore, excludes credentials/models, and has explicit size limits.
+See the current report for executed results and unfinished AI/import/FTS/scanner/UI acceptance work.

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs in CI AFTER ordinary instrumentation. Never points at a user's device.
-set -euo pipefail
+set -Eeuo pipefail
 trap 'echo "::error title=Process recovery harness::Command failed at line $LINENO (stage ${stage:-startup})"' ERR
 APP=com.notely.app.debug
 RUNNER=com.notely.app.debug.test/androidx.test.runner.AndroidJUnitRunner
@@ -9,6 +9,15 @@ emulator=$(adb shell getprop ro.boot.qemu | tr -d '\r')
 legacy=$(adb shell getprop ro.kernel.qemu | tr -d '\r')
 [[ "$emulator" == 1 || "$legacy" == 1 ]]
 mkdir -p process-recovery-results
+# AGP may uninstall instrumentation/target APKs after connected tests. Install both
+# device-job APKs explicitly before the independent host-driven sessions.
+adb install -r -t app/build/outputs/apk/debug/app-debug.apk
+adb install -r -t app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+for permission in android.permission.CAMERA android.permission.POST_NOTIFICATIONS; do
+  adb shell pm grant "$APP" "$permission"
+done
+adb shell pm list instrumentation
+adb shell run-as "$APP" pwd
 stage_run() {
   local stage=$1 mode=$2
   adb shell run-as "$APP" rm -f files/recovery-e2e/ready

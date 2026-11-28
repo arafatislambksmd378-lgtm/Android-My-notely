@@ -371,7 +371,20 @@ jobs:
 
       - name: Force Stop and SIGKILL recovery (two actual process terminations)
         if: env.DEVICE_FAIL == '0'
-        run: bash .github/scripts/process_recovery.sh
+        run: |
+          set +e
+          bash .github/scripts/process_recovery.sh > /tmp/process-recovery.log 2>&1
+          rc=$?
+          cat /tmp/process-recovery.log
+          if [ "$rc" != 0 ]; then
+            python3 - <<'PYERR'
+          from pathlib import Path
+          text = Path('/tmp/process-recovery.log').read_text(errors='replace')[-4000:]
+          text = text.replace('%', '%25').replace('\r', '').replace('\n', '%0A')
+          print('::error title=Process recovery failure::' + text)
+          PYERR
+          fi
+          exit "$rc"
 
       - name: Report Android test totals
         if: always()
@@ -417,6 +430,7 @@ jobs:
             /tmp/start.txt
             /tmp/report.md
             process-recovery-results/**
+            /tmp/process-recovery.log
             app/build/outputs/androidTest-results/**
             app/build/reports/androidTests/**
           if-no-files-found: warn

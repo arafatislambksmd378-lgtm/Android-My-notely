@@ -59,7 +59,13 @@ class LocalBackup(private val context: Context, private val db: NotelyDatabase) 
     private fun documents(data: JSONObject, visit: (JSONObject) -> Unit) {
         listOf("notes", "versions", "templates", "recovery_drafts").forEach { table ->
             val array = data.getJSONArray(table)
-            for (i in 0 until array.length()) visit(array.getJSONObject(i))
+            for (i in 0 until array.length()) {
+                val row = array.getJSONObject(i)
+                if (table == "recovery_drafts") require(
+                    row.getString("sha256") == DocumentRecovery.digest(row.getString("title"), row.getString("documentJson"))
+                ) { "A recovery snapshot failed its integrity check; existing data was not changed" }
+                visit(row)
+            }
         }
     }
 
