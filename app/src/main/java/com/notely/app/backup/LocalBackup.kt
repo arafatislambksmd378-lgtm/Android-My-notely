@@ -9,6 +9,8 @@ import com.notely.app.doc.DocumentSerializer
 import com.notely.app.recovery.DocumentRecovery
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
@@ -201,11 +203,18 @@ class LocalBackup(private val context: Context, private val db: NotelyDatabase) 
             val assetMap = manifest.getJSONObject("assets")
             val rewritten = mutableMapOf<String, String>()
             require(destination.mkdirs()) { "Cannot create restore storage" }
+            var assetIndex = 0
             assetMap.keys().forEach { original ->
                 val name = assetMap.getString(original)
                 require(name.startsWith("media/")) { "Invalid asset mapping" }
                 val source = staged[name] ?: error("Attachment missing from backup")
-                val target = File(destination, name.substringAfter('/'))
+                // Attachment UI derives its display name from the basename. Keep it,
+                // using a generated subdirectory so equal names can never overwrite.
+                val originalName = File(original).name.takeIf {
+                    it.isNotBlank() && it != "." && it != ".." && !it.contains('\u0000') && it.length <= 240
+                } ?: name.substringAfter('/')
+                val assetDirectory = File(destination, "asset_${assetIndex++}").apply { check(mkdirs()) }
+                val target = File(assetDirectory, originalName)
                 if (!target.exists()) {
                     require(context.filesDir.usableSpace > source.length() + 16L * 1024 * 1024) { "Insufficient restore storage" }
                     source.inputStream().use { src -> FileOutputStream(target).use { out -> src.copyTo(out); out.fd.sync() } }
@@ -216,6 +225,7 @@ class LocalBackup(private val context: Context, private val db: NotelyDatabase) 
                 rewritten[path] ?: error("Document asset is not listed in manifest")
             }) }
             progress("Restoring as new notebooks and documents…")
+            currentCoroutineContext().ensureActive()
             val count = withContext(NonCancellable) {
                 db.withTransaction { insertCopies(data) }.also { committed = true }
             }

@@ -60,9 +60,12 @@ class BackupRestoreInstrumentedTest {
                     val old = expected[i]
                     listOfNotNull(block.imagePath, block.drawingPath,
                         block.extra.takeIf { block.type == BlockType.ATTACHMENT }).forEach { path ->
-                        assertTrue(File(path).isFile); created += File(path).parentFile!!
+                        assertTrue(File(path).isFile); created += File(path).parentFile!!.parentFile!!
                     }
-                    if (block.type == BlockType.ATTACHMENT) assertEquals("private test attachment বাংলা", File(block.extra).readText())
+                    if (block.type == BlockType.ATTACHMENT) {
+                        assertEquals("private test attachment বাংলা", File(block.extra).readText())
+                        assertEquals(File(old.extra).name, File(block.extra).name)
+                    }
                     block.copy(imagePath = old.imagePath, drawingPath = old.drawingPath, extra = old.extra)
                 }
                 assertEquals(expected, normalized); assertEquals(expectedPage, page)
@@ -83,7 +86,7 @@ class BackupRestoreInstrumentedTest {
             assertEquals(4, count(db, "notes")); assertEquals(2, count(db, "tags"))
             db.noteDao().observeActive().first().forEach { note ->
                 DocumentSerializer.deserializeForEditing(note.documentJson).first.forEach { b ->
-                    (b.imagePath ?: b.drawingPath)?.let { created += File(it).parentFile!! }
+                    (b.imagePath ?: b.drawingPath)?.let { created += File(it).parentFile!!.parentFile!! }
                 }
             }
         } finally { db.close(); created.forEach { it.deleteRecursively() } }
@@ -131,6 +134,24 @@ class BackupRestoreInstrumentedTest {
             assertTrue(runCatching { LocalBackup(context, db).export(ByteArrayOutputStream()) }.isFailure)
             assertEquals("invalid digest", db.recoveryDao().get(id)!!.sha256)
             assertEquals(json, db.noteDao().getById(id)!!.documentJson)
+        } finally { db.close() }
+    }
+
+    @Test fun cancellationBeforeCommitDoesNotImportAnyCopies() = runBlocking {
+        val db = database()
+        try {
+            val nb = db.notebookDao().insert(NotebookEntity(name = "Keep"))
+            db.noteDao().insert(NoteEntity(notebookId = nb, documentJson = DocumentSerializer.serialize(listOf(DocumentBlock()), PageSetup())))
+            val service = LocalBackup(context, db)
+            val archive = ByteArrayOutputStream().also { service.export(it) }.toByteArray()
+            val cancelled = async {
+                service.restore(archive.inputStream()) { message ->
+                    if (message.startsWith("Restoring as new")) currentCoroutineContext().cancel()
+                }
+            }
+            cancelled.join()
+            assertTrue(cancelled.isCancelled)
+            assertEquals(1, count(db, "notebooks")); assertEquals(1, count(db, "notes"))
         } finally { db.close() }
     }
 

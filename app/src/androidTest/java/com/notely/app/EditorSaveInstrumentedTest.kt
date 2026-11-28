@@ -20,6 +20,12 @@ import org.junit.runner.RunWith
 class EditorSaveInstrumentedTest {
     @get:Rule val compose = createEmptyComposeRule()
 
+    @Test fun aboutVersionResourceMatchesInstalledApk() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val installed = context.packageManager.getPackageInfo(context.packageName, 0).versionName
+        assertEquals(installed, context.getString(R.string.app_version_name))
+    }
+
     @Test fun immediateBackFlushSurvivesActivityRelaunchWithoutChangingRichContent() {
         val context = ApplicationProvider.getApplicationContext<Context>()
         val app = context as NotelyApp

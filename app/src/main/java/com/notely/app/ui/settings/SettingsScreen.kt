@@ -313,7 +313,7 @@ fun SettingsScreen(app: NotelyApp) {
                     Spacer(Modifier.width(12.dp))
                     Column(Modifier.weight(1f)) {
                         Text("Notely", fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = c.text)
-                        Text("Version 1.0.0 · Premium notes", fontSize = 12.sp, color = c.text2)
+                        Text("Version ${androidx.compose.ui.res.stringResource(com.notely.app.R.string.app_version_name)} · Premium notes", fontSize = 12.sp, color = c.text2)
                     }
                     Text("$noteCount notes", fontSize = 12.sp, color = c.text2)
                 }
