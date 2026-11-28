@@ -424,4 +424,3 @@ jobs:
             --notes-file /tmp/release-notes.md \
             $(find release-files -name "*.apk" | sort)
           gh release view "$TAG" --json assets --jq '.assets[] | "\(.name) \(.size)"'
-

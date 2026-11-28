@@ -57,6 +57,10 @@ class PreferencesRepository(private val context: Context) {
     val defaultFont: Flow<String> = context.dataStore.data.map { it[Keys.DEFAULT_FONT] ?: "Default" }
     val defaultFontSize: Flow<Int> = context.dataStore.data.map { it[Keys.DEFAULT_FONT_SIZE] ?: 16 }
     val defaultLineSpacing: Flow<Float> = context.dataStore.data.map { it[Keys.DEFAULT_LINE_SPACING]?.toFloatOrNull() ?: 1.55f }
+    // A single DataStore emission prevents an unlocked frame while separate lock flows initialize.
+    val lockConfiguration: Flow<Pair<Boolean, String>?> = context.dataStore.data.map {
+        (it[Keys.APP_LOCK] ?: false) to (it[Keys.PIN_HASH] ?: "")
+    }
     val appLock: Flow<Boolean> = context.dataStore.data.map { it[Keys.APP_LOCK] ?: false }
     val recentSearches: Flow<List<String>> = context.dataStore.data.map {
         val raw = it[Keys.RECENT_SEARCHES] ?: ""
@@ -71,8 +75,7 @@ class PreferencesRepository(private val context: Context) {
 
     /**
      * The provider key is stored encrypted with an Android Keystore AES key (never plaintext,
-     * never logged). If the keystore is unavailable it is stored obfuscated and the app
-     * still works — the key is only ever used for the user's own provider calls.
+     * never logged). Encryption failures are reported to the user, never silently stored as plaintext.
      */
     suspend fun getAiApiKey(): String {
         val raw = context.dataStore.data.first()[Keys.AI_API_KEY] ?: ""
@@ -124,12 +127,19 @@ class PreferencesRepository(private val context: Context) {
         cur.remove(q); cur.add(0, q)
         context.dataStore.edit { it[Keys.RECENT_SEARCHES] = cur.take(8).joinToString("\n") }
     }
-    suspend fun setAi(baseUrl: String, model: String, apiKey: String, enabled: Boolean) =
-        context.dataStore.edit {
-            it[Keys.AI_BASE_URL] = baseUrl; it[Keys.AI_MODEL] = model
-            it[Keys.AI_API_KEY] = if (apiKey.isBlank()) "" else Crypto.encrypt(apiKey)
-            it[Keys.AI_ENABLED] = enabled
+    suspend fun setAi(baseUrl: String, model: String, apiKey: String?, enabled: Boolean) =
+        withContext(Dispatchers.IO) {
+            // Null preserves the existing credential; empty explicitly removes it.
+            val encrypted = apiKey?.let { if (it.isBlank()) "" else Crypto.encrypt(it) }
+            context.dataStore.edit {
+                it[Keys.AI_BASE_URL] = baseUrl; it[Keys.AI_MODEL] = model
+                if (encrypted != null) it[Keys.AI_API_KEY] = encrypted
+                it[Keys.AI_ENABLED] = enabled
+            }
         }
+
+    suspend fun clearAiKey() = context.dataStore.edit { it.remove(Keys.AI_API_KEY) }
+
 }
 
 /** AES-GCM via the Android Keystore for user-supplied API keys. */
@@ -153,14 +163,14 @@ object Crypto {
             }
     }.getOrNull()
 
-    fun encrypt(plain: String): String = runCatching {
-        val key = secretKey() ?: return ""
+    fun encrypt(plain: String): String {
+        val key = secretKey() ?: error("Android Keystore is unavailable")
         val cipher = javax.crypto.Cipher.getInstance(TRANSFORMATION)
         cipher.init(javax.crypto.Cipher.ENCRYPT_MODE, key)
         val iv = cipher.iv
         val encrypted = cipher.doFinal(plain.toByteArray(Charsets.UTF_8))
-        Base64.encodeToString(iv, Base64.NO_WRAP) + ":" + Base64.encodeToString(encrypted, Base64.NO_WRAP)
-    }.getOrDefault("")
+        return Base64.encodeToString(iv, Base64.NO_WRAP) + ":" + Base64.encodeToString(encrypted, Base64.NO_WRAP)
+    }
 
     fun decrypt(stored: String): String {
         if (stored.isBlank()) return ""
@@ -168,7 +178,7 @@ object Crypto {
         val parts = stored.split(":")
         if (parts.size != 2) return stored // unencrypted legacy value
         return runCatching {
-            val key = secretKey() ?: return stored
+            val key = secretKey() ?: return ""
             val iv = Base64.decode(parts[0], Base64.NO_WRAP)
             val data = Base64.decode(parts[1], Base64.NO_WRAP)
             val cipher = javax.crypto.Cipher.getInstance(TRANSFORMATION)

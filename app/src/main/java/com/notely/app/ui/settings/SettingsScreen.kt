@@ -232,7 +232,7 @@ fun SettingsScreen(app: NotelyApp) {
                         Text("Off by default · core app works fully offline", fontSize = 12.sp, color = c.text2)
                     }
                     Switch(checked = aiEnabled, onCheckedChange = { on ->
-                        scope.launch { app.prefs.setAi(aiUrlDraft, aiModelDraft, "", on) }
+                        scope.launch { app.prefs.setAi(aiUrlDraft, aiModelDraft, null, on) }
                     })
                 }
                 Spacer(Modifier.height(10.dp))
@@ -263,9 +263,22 @@ fun SettingsScreen(app: NotelyApp) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     ClayPrimaryButton("Save AI settings") {
                         scope.launch {
-                            app.prefs.setAi(aiUrlDraft, aiModelDraft, aiKeyDraft, aiEnabled)
+                            try {
+                                app.prefs.setAi(aiUrlDraft, aiModelDraft, aiKeyDraft.takeIf { it.isNotBlank() }, aiEnabled)
+                                aiKeyDraft = ""
+                                aiMsg = "Saved securely."
+                            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                aiMsg = "Could not save securely. Existing settings were not changed."
+                            }
+                        }
+                    }
+                    ClaySoftButton("Remove key") {
+                        scope.launch {
+                            app.prefs.clearAiKey()
                             aiKeyDraft = ""
-                            aiMsg = "Saved securely."
+                            aiMsg = "API key removed."
                         }
                     }
                     ClaySoftButton("Device check") { caps = AiAssistant.deviceCaps(app) }
