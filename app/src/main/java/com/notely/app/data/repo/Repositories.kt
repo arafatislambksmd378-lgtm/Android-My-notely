@@ -52,8 +52,11 @@ class NoteRepository(
     suspend fun createFromTemplate(notebookId: Long, title: String, documentJson: String): Long =
         dao.insert(NoteEntity(notebookId = notebookId, title = title, documentJson = documentJson))
 
-    suspend fun updateContent(id: Long, title: String, json: String) =
+    suspend fun updateContent(id: Long, title: String, json: String) = database.withTransaction {
+        DocumentSerializer.deserializeForEditing(json)
         dao.updateContent(id, title, json, System.currentTimeMillis())
+        database.recoveryDao().delete(id)
+    }
 
     suspend fun snapshot(id: Long) = database.withTransaction {
         val n = dao.getById(id) ?: return@withTransaction
@@ -70,6 +73,7 @@ class NoteRepository(
             versionDao.prune(noteId)
         }
         dao.updateContent(noteId, current.title, json, System.currentTimeMillis())
+        database.recoveryDao().delete(noteId)
     }
 
     suspend fun setPinned(id: Long, pinned: Boolean) = dao.setPinned(id, pinned)

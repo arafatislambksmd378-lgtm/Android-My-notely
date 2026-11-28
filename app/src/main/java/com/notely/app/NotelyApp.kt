@@ -20,6 +20,9 @@ class NotelyApp : Application() {
     lateinit var prefs: PreferencesRepository
         private set
 
+    lateinit var recovery: com.notely.app.recovery.DocumentRecovery
+        private set
+
     // Getters (not cached instances) so background threads never observe a half-initialised app.
     val notebooks: NotebookRepository get() = NotebookRepository(db.notebookDao())
     val notes: NoteRepository get() = NoteRepository(db.noteDao(), db.versionDao(), db.notebookDao(), db)
@@ -37,6 +40,7 @@ class NotelyApp : Application() {
         super.onCreate()
         db = NotelyDatabase.get(this)
         prefs = PreferencesRepository(this)
+        recovery = com.notely.app.recovery.DocumentRecovery(db, scope)
         createChannels()
         seedFirstRun()
         ReminderScheduler.rescheduleAll(this)

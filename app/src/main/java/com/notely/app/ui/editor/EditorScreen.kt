@@ -103,7 +103,7 @@ fun EditorScreen(
     var loaded by remember { mutableStateOf(false) }
     var loadError by remember { mutableStateOf<String?>(null) }
     var editRevision by remember { mutableStateOf(0L) }
-    val saveMutex = remember(noteId) { Mutex() }
+    val recoverySession = remember(noteId) { app.recovery.beginSession(noteId) }
     var leaving by remember { mutableStateOf(false) }
 
     var saveStatus by remember { mutableStateOf("Saved") }
@@ -147,7 +147,7 @@ fun EditorScreen(
     // A failed read is not an empty document. Keep the original bytes untouched.
     LaunchedEffect(noteId) {
         runCatching {
-            val n = app.notes.getById(noteId) ?: error("Document no longer exists")
+            val (n, recovered) = app.recovery.load(noteId)
             val (b, p) = withContext(Dispatchers.Default) {
                 DocumentSerializer.deserializeForEditing(n.documentJson)
             }
@@ -155,50 +155,37 @@ fun EditorScreen(
             pageSetup = p
             title = n.title
             cardColorIndex = n.cardColorIndex
+            if (recovered) saveStatus = "Recovered — changes protected on device"
             loaded = true
         }.onFailure { loadError = "This document could not be opened safely. Its stored content has not been changed." }
     }
 
     fun serialize() = DocumentSerializer.serialize(blocks, pageSetup)
 
-    fun saveNow(): Job? {
+    fun persistSnapshot(commit: Boolean): Job? {
         if (!loaded || readOnly) return null
         val revision = editRevision
-        val snapshot = blocks
-        val page = pageSetup
-        val t = title.ifBlank { "Untitled" }
-        saveStatus = "Saving…"
-        // Application-owned write survives removal of the editor composition. Start on
-        // Main.immediate to enqueue snapshots in edit order; do JSON and Room work off-main.
-        return app.scope.launch(Dispatchers.Main.immediate) {
-            saveMutex.withLock {
-                try {
-                    withContext(Dispatchers.IO) {
-                        app.notes.updateContent(noteId, t, DocumentSerializer.serialize(snapshot, page))
-                    }
-                    if (editRevision == revision) {
-                        dirty = false
-                        saveStatus = TimeFmt.savedLine(System.currentTimeMillis())
-                    }
-                } catch (cancelled: kotlinx.coroutines.CancellationException) {
-                    throw cancelled
-                } catch (_: Exception) {
-                    saveStatus = "Save failed — tap Save to retry"
-                }
+        saveStatus = if (commit) "Saving…" else "Protecting recovery copy…"
+        return app.recovery.write(noteId, recoverySession, title.ifBlank { "Untitled" }, blocks, pageSetup, commit) { result ->
+            if (editRevision == revision) {
+                result.onSuccess {
+                    if (commit) dirty = false
+                    saveStatus = if (commit) TimeFmt.savedLine(System.currentTimeMillis()) else "Recovery copy saved"
+                }.onFailure { saveStatus = "Save failed — tap Save to retry" }
             }
         }
     }
+
+    fun saveNow(): Job? = persistSnapshot(commit = true)
 
     fun scheduleSave() {
         editRevision++
         dirty = true
         if (readOnly) return
-        if (!autosave) {
-            saveStatus = "Unsaved changes"
-            return
-        }
+        // Journal every change immediately, even when normal auto-save is disabled.
+        persistSnapshot(commit = false)
         saveJob?.cancel()
-        saveJob = scope.launch {
+        if (autosave) saveJob = scope.launch {
             delay(700)
             saveNow()
         }

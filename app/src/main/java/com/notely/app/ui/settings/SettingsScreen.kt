@@ -303,6 +303,8 @@ fun SettingsScreen(app: NotelyApp) {
             }
         }
 
+        item { BackupPanel(app) }
+
         item { SectionLabel("About") }
         item {
             ClayCard {
