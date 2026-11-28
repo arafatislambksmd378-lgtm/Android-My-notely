@@ -7,7 +7,7 @@ See [backup/recovery contracts and limits](docs/BACKUP-AND-RECOVERY.md). Full pr
 Professional offline-first notebook, rich-text document editor and productivity app.
 Premium Soft Claymorphism + Material 3, built with Kotlin + Jetpack Compose + Room.
 
-**Primary color:** `#8950F5` · **Min SDK:** 26 (Android 8.0) · **Target SDK:** 34 · **Version:** 1.0.0
+**Primary color:** `#8950F5` · **Min SDK:** 26 (Android 8.0) · **Target SDK:** 34 · **Version:** 1.0.1 (versionCode 2)
 
 ## Build & install (APK)
 
@@ -15,7 +15,7 @@ Build 50 repair/acceptance report: [`docs/REPAIR-REPORT-2026-11-28.md`](docs/REP
 Baseline inventory: [`docs/BASELINE-2026-11-28.md`](docs/BASELINE-2026-11-28.md).
 Historical delivery report: [`docs/DELIVERY.md`](docs/DELIVERY.md).
 
-Current verified development build: [build 50](https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/tag/ci-build-50)
+Historical verified development build: [build 50](https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/tag/ci-build-50)
 (`b9e24db`): compile, **37 JVM tests**, lint and the **7-test Android emulator suite** passed.
 Debug APK is debug-signed/installable; release APK is **unsigned**, not production-ready.
 The acceptance report documents remaining features and the editor runtime crash found and fixed by the new UI regression.

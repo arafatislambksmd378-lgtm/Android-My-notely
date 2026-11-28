@@ -40,8 +40,23 @@ stage_run() {
     adb shell run-as "$APP" kill -9 "$before"
   fi
   wait "$harness" || true # termination is intentional, assertions above must already have passed
-  test -z "$(adb shell pidof "$APP" | tr -d '\r')"
-  echo "Stage $stage: durable acknowledgement then $mode, old PID $before terminated" | tee -a process-recovery-results/summary.txt
+  # ActivityManager process-group termination can be asynchronous. Require the
+  # captured PID(s) to disappear, not a zero-delay pidof immediately after Binder returns.
+  local remaining="" gone=0
+  for _ in $(seq 1 40); do
+    remaining=$(adb shell pidof "$APP" 2>/dev/null | tr -d '\r' || true)
+    local old_alive=0
+    for old_pid in $before; do
+      if grep -qw "$old_pid" <<< "$remaining"; then old_alive=1; fi
+    done
+    if [ "$old_alive" = 0 ]; then gone=1; break; fi
+    sleep 0.25
+  done
+  if [ "$gone" != 1 ]; then
+    echo "::error::Old process did not terminate: before=$before remaining=$remaining"
+    exit 1
+  fi
+  echo "Stage $stage: durable acknowledgement then $mode, old PID $before terminated; current PID(s): ${remaining:-none}" | tee -a process-recovery-results/summary.txt
 }
 stage_run prepare force-stop
 stage_run second SIGKILL
