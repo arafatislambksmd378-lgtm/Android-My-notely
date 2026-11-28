@@ -1,0 +1,10 @@
+name: Verified Notely APK release
+on:
+  workflow_dispatch:
+permissions:
+  contents: write
+  issues: write
+jobs:
+  verify-build-publish:
+    uses: ./.github/workflows/android-ci.yml
+    secrets: inherit

@@ -8,6 +8,7 @@ on:
     branches: [ "main", "arena/**" ]
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 concurrency:
   group: ci-${{ github.ref }}
@@ -22,6 +23,11 @@ jobs:
     name: Build, test, lint and package
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      NOTELY_KEYSTORE_BASE64: ${{ secrets.NOTELY_KEYSTORE_BASE64 }}
+      NOTELY_KEYSTORE_PASSWORD: ${{ secrets.NOTELY_KEYSTORE_PASSWORD }}
+      NOTELY_KEY_ALIAS: ${{ secrets.NOTELY_KEY_ALIAS }}
+      NOTELY_KEY_PASSWORD: ${{ secrets.NOTELY_KEY_PASSWORD }}
 
     steps:
       - name: Checkout
@@ -65,6 +71,9 @@ jobs:
 
       # Compiler output is re-emitted as workflow annotations so failures are
       # readable even from environments that cannot download raw job logs.
+      - name: Prepare optional production signing (never print credentials)
+        run: python3 .github/scripts/prepare_signing.py
+
       - name: Compile Kotlin (debug)
         run: |
           set +e
@@ -107,10 +116,18 @@ jobs:
       - name: Assemble release APK (unsigned, for size/verify)
         run: ./gradlew :app:assembleRelease --stacktrace
 
+      - name: Verify APK identity, version, signatures and record metadata
+        run: python3 .github/scripts/verify_apks.py
+
+      - name: Remove temporary signing material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/notely-release.jks"
+
       - name: Collect reports and artifacts
         if: always()
         run: |
           mkdir -p ci-out
+          test ! -f apk-metadata.json || cp apk-metadata.json ci-out/
           find app/build/test-results -name "*.xml" -exec cp --parents {} ci-out/ \; 2>/dev/null || true
           find app/build/outputs -name "*.apk" -exec cp --parents {} ci-out/ \; 2>/dev/null || true
           find app/build/reports -maxdepth 3 -type f -name "*.html" -exec cp --parents {} ci-out/ \; 2>/dev/null || true
@@ -162,6 +179,7 @@ jobs:
           retention-days: 14
 
   device:
+    needs: build
     name: Install and run on an emulator
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -359,6 +377,15 @@ jobs:
         run: |
           python3 .github/scripts/android_test_summary.py
 
+      - name: Download exact packaged APKs for final install verification
+        uses: actions/download-artifact@v4
+        with:
+          name: notely-build-${{ github.run_number }}
+          path: packaged-apks
+
+      - name: Install and launch exact publishable APKs
+        run: bash .github/scripts/install_candidates.sh
+
       - name: Post the device report to the tracking issue
         if: always()
         env:
@@ -397,7 +424,7 @@ jobs:
   publish:
     name: Publish verified development artifacts
     needs: [build, device]
-    if: github.event_name == 'push'
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -415,7 +442,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -e
-          TAG="ci-build-${GITHUB_RUN_NUMBER}"
+          TAG="notely-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
           {
             echo "Build timestamp (UTC): $(date -u +%FT%TZ)"
             echo "Automated build of \`${GITHUB_SHA}\`."
@@ -426,12 +453,14 @@ jobs:
               echo "| \`${apk##*/}\` | $(stat -c%s "$apk") B | \`$(sha256sum "$apk" | cut -d' ' -f1)\` |"
             done
             echo ""
-            echo "The debug APK is installable as-is. The release APK is R8-minified and **unsigned**."
+            echo "Development candidate, not production certified. Debug APK is debug-signed and installable."
+            echo "Release signing and package metadata: see apk-metadata.json. Unsigned release APKs cannot be installed."
+            echo "Recovery tests include acknowledged edits surviving Force Stop and SIGKILL. Backup/restore tests use isolated test data."
             echo "Install: \`adb install -r app-debug.apk\`"
           } > /tmp/release-notes.md
           gh release create "$TAG" \
             --title "Notely development build ${GITHUB_RUN_NUMBER}" \
             --prerelease --target "$GITHUB_SHA" \
             --notes-file /tmp/release-notes.md \
-            $(find release-files -name "*.apk" | sort)
+            $(find release-files -name "*.apk" | sort) $(find release-files -name "apk-metadata.json" | head -1)
           gh release view "$TAG" --json assets --jq '.assets[] | "\(.name) \(.size)"'

@@ -13,14 +13,25 @@ android {
         applicationId = "com.notely.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.1"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         vectorDrawables { useSupportLibrary = true }
     }
 
+    val signingPath = System.getenv("NOTELY_KEYSTORE_PATH")
+    if (!signingPath.isNullOrBlank()) {
+        signingConfigs.create("production") {
+            storeFile = file(signingPath)
+            storePassword = requireNotNull(System.getenv("NOTELY_KEYSTORE_PASSWORD"))
+            keyAlias = requireNotNull(System.getenv("NOTELY_KEY_ALIAS"))
+            keyPassword = requireNotNull(System.getenv("NOTELY_KEY_PASSWORD"))
+        }
+    }
+
     buildTypes {
         release {
+            if (!signingPath.isNullOrBlank()) signingConfig = signingConfigs.getByName("production")
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
