@@ -168,7 +168,10 @@ fun SettingsScreen(app: NotelyApp) {
                         ClayPrimaryButton("Save") {
                             scope.launch {
                                 if (pinDraft.length >= 4) {
-                                    app.prefs.setPinHash(Security.hashPin(pinDraft))
+                                    val newHash = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) {
+                                        Security.hashPin(pinDraft)
+                                    }
+                                    app.prefs.setPinHash(newHash)
                                     pinMsg = "PIN saved — it will be required next time the app opens."
                                     pinDraft = ""
                                 } else pinMsg = "PIN must be at least 4 digits."
@@ -180,7 +183,7 @@ fun SettingsScreen(app: NotelyApp) {
                         Text(pinMsg, fontSize = 12.sp, color = c.text2)
                     }
                     Text(
-                        "The PIN is stored as a SHA-256 hash on this device and is never transmitted.",
+                        "The PIN is stored as a salted PBKDF2 verifier on this device and is never transmitted.",
                         fontSize = 11.sp, color = c.text2
                     )
                 }

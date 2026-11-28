@@ -674,7 +674,14 @@ fun EditorScreen(
             onBookmarks = { showOptions = false; showBookmarks = true },
             onTags = { showOptions = false; showTags = true },
             onExport = { showOptions = false; showExport = true },
-            onVersions = { showOptions = false; showVersions = true },
+            onVersions = {
+                showOptions = false
+                saveJob?.cancel()
+                scope.launch {
+                    if (dirty) saveNow()?.join()
+                    if (!dirty) showVersions = true
+                }
+            },
             onAi = { showOptions = false; showAi = true },
             onTemplates = { showOptions = false; showTemplates = true },
             onMove = { nbId -> scope.launch { app.notes.move(noteId, nbId); onBack() } },
@@ -689,8 +696,8 @@ fun EditorScreen(
                     // overwrite the copy's content with this (correct) document a moment
                     // after duplication, or race the read below.
                     saveJob?.cancel()
-                    val t = title.ifBlank { "Untitled" }
-                    runCatching { app.notes.updateContent(noteId, t, serialize()) }
+                    saveNow()?.join()
+                    if (dirty) return@launch
                     val copyId = app.notes.duplicate(noteId)
                     if (copyId > 0) {
                         val tagsOfNote = runCatching { app.tags.tagsForNote(noteId).first() }.getOrDefault(emptyList())
