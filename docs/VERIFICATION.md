@@ -1,3 +1,5 @@
+> Historical report. For the current repair scope, verification and unresolved acceptance criteria, see [REPAIR-REPORT-2026-11-28.md](REPAIR-REPORT-2026-11-28.md).
+
 # Notely — Verification Report
 
 Everything below was produced by a pipeline that actually ran. Where something was **not** verified,

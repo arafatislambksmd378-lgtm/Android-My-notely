@@ -7,9 +7,18 @@ Premium Soft Claymorphism + Material 3, built with Kotlin + Jetpack Compose + Ro
 
 ## Build & install (APK)
 
-Delivery report (artifacts, hashes, feature matrix, status): [`docs/DELIVERY.md`](docs/DELIVERY.md).
+Current repair/acceptance report: [`docs/REPAIR-REPORT-2026-11-28.md`](docs/REPAIR-REPORT-2026-11-28.md).
+Baseline inventory: [`docs/BASELINE-2026-11-28.md`](docs/BASELINE-2026-11-28.md).
+Historical delivery report: [`docs/DELIVERY.md`](docs/DELIVERY.md).
 
-> **Status: built, tested and installed.** The APK in this repository was produced by GitHub Actions and
+Current verified development build: [build 50](https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/tag/ci-build-50)
+(`b9e24db`): compile, **37 JVM tests**, lint and the **7-test Android emulator suite** passed.
+Debug APK is debug-signed/installable; release APK is **unsigned**, not production-ready.
+The acceptance report documents remaining features and the editor runtime crash found and fixed by the new UI regression.
+
+
+> **Production status: NOT READY.** Full offline AI, backup/restore and process-death acceptance remain incomplete.
+> The historical baseline APK was produced by GitHub Actions and
 > installed and launched on an Android 14 (API 34) emulator; see `docs/VERIFICATION.md` for the measured
 > results. Prebuilt artifacts:
 >
@@ -44,11 +53,11 @@ On the emulator: install OK, cold start ~1.5 s, no crash, instrumented tests pas
 ## Run tests
 
 ```bash
-./gradlew testDebugUnitTest          # 27 JVM tests: doc model + export engines + PIN integrity
-./gradlew connectedDebugAndroidTest  # 3 instrumented tests: real PDF output (needs a device)
+./gradlew testDebugUnitTest          # 37 JVM tests: document/export/security/file regressions
+./gradlew connectedDebugAndroidTest  # 7 tests: PDF, Room transactions, real editor save (needs a device)
 ```
 
-## Features (all functional, offline-first)
+## Existing feature inventory (not full acceptance certification)
 
 - **3-tab navigation:** Home, Notebooks, Settings (persistent bottom bar, state preserved).
 - **Home:** time-aware greeting, live search (title + document content + notebook), notebook
@@ -85,7 +94,7 @@ On the emulator: install OK, cold start ~1.5 s, no crash, instrumented tests pas
 - **Templates:** 16 built-ins (meeting notes, journal, planner, CV, invoice…) + save-current-as-template,
   all creating real editable documents.
 - **Settings:** workspace name/icon, light/dark/system theme, accent (purple/green/blue/yellow),
-  app lock (salted SHA-256 PIN, re-locks when backgrounded), editor defaults (font/size/line spacing),
+  app lock (salted PBKDF2 PIN with legacy migration, re-locks when backgrounded), editor defaults (font/size/line spacing),
   auto-save, spelling toggle, storage usage + cache clear, library (templates), about, optional AI
   provider config (no hardcoded keys) and explicit on-device model downloads.
 - **AI assistant (optional):** device capability check (RAM/storage/arch → recommended model class),
@@ -95,9 +104,9 @@ On the emulator: install OK, cold start ~1.5 s, no crash, instrumented tests pas
   Settings also offers explicit GGUF downloads (Qwen2.5-0.5B / SmolLM2-1.7B / Llama-3.2-3B) with
   RAM + storage compatibility checks and progress; the app states plainly that no inference runtime is
   bundled yet. Core app never depends on any of it.
-- **Search:** indexed SQLite `LIKE` over title + serialized document (no full-content load for previews).
-- **Data integrity:** Room transactions, foreign-key-friendly schema, version retention, trash (no silent
-  permanent delete), crash-safe debounced saves.
+- **Search:** SQLite wildcard `LIKE` over title + serialized document; this is not indexed full-content search.
+- **Data integrity:** Room transactions, version retention and trash. Confirmed repository transaction and
+  editor-navigation save defects are repaired; no claim of complete process-death recovery or foreign-key enforcement.
 
 ## Architecture
 

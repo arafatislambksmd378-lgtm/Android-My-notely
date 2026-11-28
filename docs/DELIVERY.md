@@ -1,3 +1,5 @@
+> Historical report. For the current repair scope, verification and unresolved acceptance criteria, see [REPAIR-REPORT-2026-11-28.md](REPAIR-REPORT-2026-11-28.md).
+
 # Notely — Delivery Report
 
 Branch: `arena/20d1dbca-android-my-notely` (from `0858c47`)
