@@ -14,7 +14,7 @@ object ComplexFixture {
         val bmp = Bitmap.createBitmap(12, 12, Bitmap.Config.ARGB_8888)
         image.outputStream().use { check(bmp.compress(Bitmap.CompressFormat.PNG, 100, it)) }; bmp.recycle()
         val drawing = File(folder, "drawing.png").apply { image.copyTo(this) }
-        val attachment = File(folder, "attachment.txt").apply { writeText("private test attachment বাংলা") }
+        val attachment = File(folder, "attachment-${"a".repeat(235)}.txt").apply { writeText("private test attachment বাংলা") }
         val blocks = mutableListOf(DocumentBlock(id = "body", runs = listOf(TextRun("Initial paragraph"))))
         blocks += DocumentBlock(id = "title", type = BlockType.HEADING, headingLevel = 1, runs = listOf(TextRun("Title", fontSizeSp = 30f)))
         blocks += DocumentBlock(id = "subtitle", type = BlockType.HEADING, headingLevel = 2, runs = listOf(TextRun("Subtitle", fontSizeSp = 24f)))

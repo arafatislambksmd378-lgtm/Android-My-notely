@@ -211,7 +211,7 @@ class LocalBackup(private val context: Context, private val db: NotelyDatabase) 
                 // Attachment UI derives its display name from the basename. Keep it,
                 // using a generated subdirectory so equal names can never overwrite.
                 val originalName = File(original).name.takeIf {
-                    it.isNotBlank() && it != "." && it != ".." && !it.contains('\u0000') && it.length <= 240
+                    it.isNotBlank() && it != "." && it != ".." && !it.contains('\u0000')
                 } ?: name.substringAfter('/')
                 val assetDirectory = File(destination, "asset_${assetIndex++}").apply { check(mkdirs()) }
                 val target = File(assetDirectory, originalName)
