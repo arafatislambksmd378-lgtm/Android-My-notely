@@ -244,7 +244,9 @@ fun EditorScreen(
     fun openUrl(url: String) {
         val normalized = if (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("mailto:")) url
         else "https://$url"
-        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(normalized))) }
+        if (com.notely.app.util.SafeLinks.isAllowed(normalized)) {
+            runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(normalized))) }
+        }
     }
 
     // ---- Launchers ----

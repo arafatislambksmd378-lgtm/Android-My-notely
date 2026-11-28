@@ -47,8 +47,9 @@ object Security {
 
     private fun pbkdf2(pin: String, salt: ByteArray, iterations: Int): ByteArray {
         val spec = javax.crypto.spec.PBEKeySpec(pin.toCharArray(), salt, iterations, KEY_BITS)
-        return javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256")
-            .generateSecret(spec).encoded
+        return try {
+            javax.crypto.SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded
+        } finally { spec.clearPassword() }
     }
 
     /** True when [stored] is one of the old unsalted SHA-256 hashes. */
@@ -75,12 +76,14 @@ object Security {
             return java.security.MessageDigest.isEqual(legacy.toByteArray(), stored.toByteArray())
         }
         val parts = stored.split("$")
-        if (parts.size != 4) return false
+        if (parts.size != 4 || parts[0] != PREFIX) return false
         val iterations = parts[1].toIntOrNull() ?: return false
+        if (iterations !in 1..1_000_000 || stored.length > 512) return false
         val salt = runCatching { android.util.Base64.decode(parts[2], android.util.Base64.NO_WRAP) }
             .getOrNull() ?: return false
         val expected = runCatching { android.util.Base64.decode(parts[3], android.util.Base64.NO_WRAP) }
             .getOrNull() ?: return false
+        if (salt.size !in 16..64 || expected.size != KEY_BITS / 8) return false
         val actual = runCatching { pbkdf2(pin, salt, iterations) }.getOrNull() ?: return false
         return java.security.MessageDigest.isEqual(expected, actual)
     }

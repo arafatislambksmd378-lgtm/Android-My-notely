@@ -1,5 +1,7 @@
 package com.notely.app.export
 
+import com.notely.app.util.SafeLinks
+
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -199,7 +201,7 @@ object Exporters {
                 if (r.italic) t = "*$t*"
                 if (r.underline) t = "<u>$t</u>"
                 if (r.strikethrough) t = "~~$t~~"
-                if (r.link != null) t = "[$t](${r.link})"
+                if (r.link != null && SafeLinks.isAllowed(r.link)) t = "[$t](${r.link})"
                 t
             }
             when (b.type) {
@@ -258,7 +260,7 @@ object Exporters {
                 if (r.superscript) t = "<sup>$t</sup>"
                 if (r.subscript) t = "<sub>$t</sub>"
                 if (r.highlightArgb != null) t = "<mark>$t</mark>"
-                if (r.link != null) t = "<a href=\"${esc(r.link)}\">$t</a>"
+                if (r.link != null && SafeLinks.isAllowed(r.link)) t = "<a href=\"${esc(r.link)}\">$t</a>"
                 t
             }
             val style = "text-align:${listOf("left", "center", "right", "justify")[b.align.coerceIn(0, 3)]};" +
@@ -696,7 +698,7 @@ img{max-width:100%;}table{margin:8px 0;}p{margin:6px 0;}</style></head>
                     imageRelIds[path] = "rIdImg${media.size}"
                 }
             }
-            b.runs.forEach { r -> r.link?.let { links.add(it) } }
+            b.runs.forEach { r -> r.link?.takeIf { SafeLinks.isAllowed(it) }?.let { links.add(it) } }
         }
         val linkRelIds = links.withIndex().associate { (i, url) -> url to "rIdLnk${i + 1}" }
 
@@ -892,7 +894,7 @@ $paras
             if (r.italic) t = """<text:span text:style-name="TItalic">$t</text:span>"""
             if (r.underline) t = """<text:span text:style-name="TUnder">$t</text:span>"""
             if (r.strikethrough) t = """<text:span text:style-name="TStrike">$t</text:span>"""
-            if (r.link != null) t = """<text:a xlink:href="${esc(r.link)}">$t</text:a>"""
+            if (r.link != null && SafeLinks.isAllowed(r.link)) t = """<text:a xlink:href="${esc(r.link)}">$t</text:a>"""
             t
         }
 

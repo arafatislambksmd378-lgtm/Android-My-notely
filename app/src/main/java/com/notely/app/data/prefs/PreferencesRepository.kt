@@ -7,6 +7,11 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.notely.app.ui.theme.Accent
@@ -29,6 +34,8 @@ class PreferencesRepository(private val context: Context) {
         val DEFAULT_FONT_SIZE = intPreferencesKey("default_font_size")
         val DEFAULT_LINE_SPACING = stringPreferencesKey("default_line_spacing")
         val APP_LOCK = booleanPreferencesKey("app_lock")
+        val PIN_FAILURES = intPreferencesKey("pin_failures")
+        val PIN_RETRY_AT = longPreferencesKey("pin_retry_at")
         val PIN_HASH = stringPreferencesKey("pin_hash")
         val RECENT_SEARCHES = stringPreferencesKey("recent_searches")
         val AI_BASE_URL = stringPreferencesKey("ai_base_url")
@@ -55,6 +62,8 @@ class PreferencesRepository(private val context: Context) {
         val raw = it[Keys.RECENT_SEARCHES] ?: ""
         if (raw.isBlank()) emptyList() else raw.split("\n").filter { s -> s.isNotBlank() }
     }
+    private val pinMutex = Mutex()
+    val pinRetryAt: Flow<Long> = context.dataStore.data.map { it[Keys.PIN_RETRY_AT] ?: 0L }
     val pinHash: Flow<String> = context.dataStore.data.map { it[Keys.PIN_HASH] ?: "" }
     val aiBaseUrl: Flow<String> = context.dataStore.data.map { it[Keys.AI_BASE_URL] ?: "" }
     val aiModel: Flow<String> = context.dataStore.data.map { it[Keys.AI_MODEL] ?: "" }
@@ -70,16 +79,32 @@ class PreferencesRepository(private val context: Context) {
         return Crypto.decrypt(raw)
     }
 
-    suspend fun verifyPin(pin: String): Boolean {
-        val stored = pinHash.first()
-        if (stored.isBlank()) return false
-        val ok = com.notely.app.util.Security.verifyPin(pin, stored)
-        // Transparently migrate an old unsalted hash to salted PBKDF2 after a
-        // successful unlock, so no install keeps a crackable representation.
-        if (ok && com.notely.app.util.Security.isLegacyHash(stored)) {
-            setPinHash(com.notely.app.util.Security.hashPin(pin))
+    /** Serial verification with persisted cooldown; recomposition/relaunch cannot reset attempts. */
+    suspend fun verifyPin(pin: String): Boolean = withContext(Dispatchers.IO) {
+        pinMutex.withLock {
+            val prefs = context.dataStore.data.first()
+            val now = System.currentTimeMillis()
+            if ((prefs[Keys.PIN_RETRY_AT] ?: 0L) > now) return@withLock false
+            val stored = prefs[Keys.PIN_HASH].orEmpty()
+            val ok = com.notely.app.util.Security.verifyPin(pin, stored)
+            val upgraded = if (ok && com.notely.app.util.Security.isLegacyHash(stored))
+                com.notely.app.util.Security.hashPin(pin) else null
+            context.dataStore.edit {
+                if (ok) {
+                    it[Keys.PIN_FAILURES] = 0
+                    it[Keys.PIN_RETRY_AT] = 0L
+                    if (upgraded != null) it[Keys.PIN_HASH] = upgraded
+                } else {
+                    val attempts = ((it[Keys.PIN_FAILURES] ?: 0) + 1).coerceAtMost(20)
+                    it[Keys.PIN_FAILURES] = attempts
+                    if (attempts >= 5) {
+                        val waitMs = (30_000L * (1L shl (attempts - 5).coerceAtMost(5))).coerceAtMost(900_000L)
+                        it[Keys.PIN_RETRY_AT] = System.currentTimeMillis() + waitMs
+                    }
+                }
+            }
+            ok
         }
-        return ok
     }
 
     suspend fun setThemeMode(m: ThemeMode) = context.dataStore.edit { it[Keys.THEME] = m.name }

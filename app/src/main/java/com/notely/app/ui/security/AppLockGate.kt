@@ -22,6 +22,8 @@ import com.notely.app.ui.components.ClayIconTile
 import com.notely.app.ui.components.ClayPrimaryButton
 import com.notely.app.ui.theme.LocalNotelyColors
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 
 /**
  * Real app lock: when a PIN hash exists the app shell stays behind this gate until the
@@ -33,27 +35,36 @@ fun AppLockGate(app: NotelyApp, onUnlocked: () -> Unit) {
     val scope = rememberCoroutineScope()
     var pin by remember { mutableStateOf("") }
     var error by remember { mutableStateOf("") }
-    var attempts by remember { mutableStateOf(0) }
+    val retryAt by app.prefs.pinRetryAt.collectAsStateWithLifecycle(0L)
+    var remainingSeconds by remember { mutableStateOf(0L) }
+    LaunchedEffect(retryAt) {
+        do {
+            remainingSeconds = ((retryAt - System.currentTimeMillis() + 999) / 1000).coerceAtLeast(0)
+            if (remainingSeconds > 0) delay(250)
+        } while (remainingSeconds > 0)
+    }
     var checking by remember { mutableStateOf(false) }
     var showHelp by remember { mutableStateOf(false) }
 
     fun attempt() {
+        if (checking || remainingSeconds > 0) return
         if (pin.length < 4) { error = "Enter your 4+ digit PIN."; return }
+        val candidate = pin
         checking = true
-        scope.launch(kotlinx.coroutines.Dispatchers.IO) {
-            val ok = app.prefs.verifyPin(pin)
-            kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
-                checking = false
-                if (ok) {
+        scope.launch {
+            try {
+                if (app.prefs.verifyPin(candidate)) {
+                    pin = ""
                     onUnlocked()
                 } else {
-                    attempts++
                     pin = ""
-                    error = if (attempts >= 5)
-                        "Too many attempts. Wait a moment, then try again."
-                    else "Incorrect PIN. ${5 - attempts} attempt(s) left."
+                    error = "Incorrect PIN or retry delay active."
                 }
-            }
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (_: Exception) {
+                error = "Could not verify PIN. Your notes have not been changed. Please retry."
+            } finally { checking = false }
         }
     }
 
@@ -80,14 +91,14 @@ fun AppLockGate(app: NotelyApp, onUnlocked: () -> Unit) {
                 textStyle = androidx.compose.ui.text.TextStyle(textAlign = TextAlign.Center, fontSize = 20.sp),
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                enabled = attempts < 5
+                enabled = !checking && remainingSeconds == 0L
             )
             if (error.isNotBlank()) {
                 Spacer(Modifier.height(8.dp))
                 Text(error, color = MaterialTheme.colorScheme.error, fontSize = 13.sp)
             }
             Spacer(Modifier.height(16.dp))
-            ClayPrimaryButton(if (checking) "Checking…" else "Unlock", onClick = { attempt() })
+            ClayPrimaryButton(if (checking) "Checking…" else if (remainingSeconds > 0) "Retry in ${remainingSeconds}s" else "Unlock", onClick = { attempt() })
             Spacer(Modifier.height(10.dp))
             TextButton(onClick = { showHelp = true }) { Text("Forgot PIN?") }
         }
