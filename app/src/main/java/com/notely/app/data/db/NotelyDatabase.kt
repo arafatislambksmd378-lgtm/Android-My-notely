@@ -42,7 +42,6 @@ abstract class NotelyDatabase : RoomDatabase() {
             INSTANCE ?: synchronized(this) {
                 INSTANCE ?: Room.databaseBuilder(context, NotelyDatabase::class.java, "notely.db")
                     .addMigrations(MIGRATION_1_2)
-                    .fallbackToDestructiveMigration()
                     .build().also { INSTANCE = it }
             }
     }

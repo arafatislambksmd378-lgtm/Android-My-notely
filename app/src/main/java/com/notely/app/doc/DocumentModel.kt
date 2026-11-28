@@ -220,25 +220,45 @@ object DocumentSerializer {
         return root.toString()
     }
 
-    fun deserialize(json: String?): Pair<List<DocumentBlock>, PageSetup> {
-        if (json.isNullOrBlank()) return Pair(emptyList(), PageSetup())
-        return try {
-            val root = JSONObject(json)
-            val blocks = mutableListOf<DocumentBlock>()
-            val arr = root.optJSONArray("blocks")
-            if (arr != null) {
-                for (i in 0 until arr.length()) {
-                    // Skip a single corrupt block instead of discarding the whole
-                    // document: a truncated save or a future block type should never
-                    // cost the user every other paragraph.
-                    val obj = arr.optJSONObject(i) ?: continue
-                    runCatching { DocumentBlock.fromJson(obj) }.getOrNull()?.let { blocks.add(it) }
+    /** Strict read for any editable document. Never turn lost/unknown content into a blank save. */
+    fun deserializeForEditing(json: String?): Pair<List<DocumentBlock>, PageSetup> {
+        if (json.isNullOrBlank()) return emptyList<DocumentBlock>() to PageSetup()
+        val root = JSONObject(json)
+        require(root.optInt("v", 1) == 1) { "Unsupported document version" }
+        val arr = root.getJSONArray("blocks")
+        val ids = mutableSetOf<String>()
+        val blocks = (0 until arr.length()).map { index ->
+            val obj = arr.getJSONObject(index)
+            // Unknown block types must not silently become paragraphs.
+            BlockType.valueOf(obj.getString("type"))
+            val block = DocumentBlock.fromJson(obj)
+            require(block.id.isNotBlank() && ids.add(block.id)) { "Invalid or duplicate block ID" }
+            block.table?.let { table ->
+                require(table.rows > 0 && table.cols > 0 &&
+                    table.rows.toLong() * table.cols == table.cells.size.toLong()) { "Invalid table structure" }
+            }
+            block.chart?.let { chart ->
+                require(chart.labels.size == chart.values.size && chart.values.all { it.isFinite() }) {
+                    "Invalid chart structure"
                 }
             }
-            Pair(blocks, PageSetup.fromJson(root.optJSONObject("page")))
-        } catch (e: Exception) {
-            Pair(emptyList(), PageSetup())
+            block
         }
+        require(!root.has("page") || root.optJSONObject("page") != null) { "Invalid page setup" }
+        return blocks to PageSetup.fromJson(root.optJSONObject("page"))
+    }
+
+    /** Best-effort preview only. NEVER use this result to overwrite the stored document. */
+    fun deserialize(json: String?): Pair<List<DocumentBlock>, PageSetup> {
+        if (json.isNullOrBlank()) return emptyList<DocumentBlock>() to PageSetup()
+        return runCatching {
+            val root = JSONObject(json)
+            val arr = root.optJSONArray("blocks") ?: JSONArray()
+            val blocks = (0 until arr.length()).mapNotNull { i ->
+                arr.optJSONObject(i)?.let { runCatching { DocumentBlock.fromJson(it) }.getOrNull() }
+            }
+            blocks to PageSetup.fromJson(root.optJSONObject("page"))
+        }.getOrElse { emptyList<DocumentBlock>() to PageSetup() }
     }
 
     fun plainText(blocks: List<DocumentBlock>): String =

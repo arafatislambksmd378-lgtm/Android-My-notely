@@ -1,6 +1,7 @@
 package com.notely.app.data.repo
 
 import com.notely.app.data.db.*
+import androidx.room.withTransaction
 import com.notely.app.doc.DocumentSerializer
 import kotlinx.coroutines.flow.Flow
 
@@ -22,7 +23,8 @@ class NotebookRepository(private val dao: NotebookDao) {
 class NoteRepository(
     private val dao: NoteDao,
     private val versionDao: VersionDao,
-    private val notebookDao: NotebookDao
+    private val notebookDao: NotebookDao,
+    private val database: NotelyDatabase
 ) {
     fun observeActive() = dao.observeActive()
     fun observeInNotebook(nb: Long) = dao.observeInNotebook(nb)
@@ -53,15 +55,22 @@ class NoteRepository(
     suspend fun updateContent(id: Long, title: String, json: String) =
         dao.updateContent(id, title, json, System.currentTimeMillis())
 
-    suspend fun snapshot(id: Long) {
-        val n = dao.getById(id) ?: return
-        if (n.documentJson.isBlank()) return
+    suspend fun snapshot(id: Long) = database.withTransaction {
+        val n = dao.getById(id) ?: return@withTransaction
+        if (n.documentJson.isBlank()) return@withTransaction
         versionDao.insert(VersionEntity(noteId = id, documentJson = n.documentJson))
         versionDao.prune(id)
     }
 
-    suspend fun restoreVersion(noteId: Long, json: String) =
-        dao.updateContent(noteId, dao.getById(noteId)?.title ?: "Untitled", json, System.currentTimeMillis())
+    suspend fun restoreVersion(noteId: Long, json: String) = database.withTransaction {
+        DocumentSerializer.deserializeForEditing(json)
+        val current = dao.getById(noteId) ?: error("Document no longer exists")
+        if (current.documentJson.isNotBlank()) {
+            versionDao.insert(VersionEntity(noteId = noteId, documentJson = current.documentJson))
+            versionDao.prune(noteId)
+        }
+        dao.updateContent(noteId, current.title, json, System.currentTimeMillis())
+    }
 
     suspend fun setPinned(id: Long, pinned: Boolean) = dao.setPinned(id, pinned)
     suspend fun setFavorite(id: Long, fav: Boolean) = dao.setFavorite(id, fav)
@@ -76,8 +85,11 @@ class NoteRepository(
      * source notebook. The notes move as a single database transaction so a crash
      * can never leave half the notes in a notebook that is being archived.
      */
-    @androidx.room.Transaction
-    suspend fun mergeNotebook(from: Long, to: Long) {
+    suspend fun mergeNotebook(from: Long, to: Long) = database.withTransaction {
+        require(from != to) { "Choose a different destination notebook" }
+        val source = notebookDao.getById(from) ?: error("Source notebook no longer exists")
+        val target = notebookDao.getById(to) ?: error("Destination notebook no longer exists")
+        require(!source.trashed && !target.trashed && !target.archived) { "Notebook is not active" }
         dao.reparentNotes(from, to)
         notebookDao.setArchived(from, true, System.currentTimeMillis())
     }

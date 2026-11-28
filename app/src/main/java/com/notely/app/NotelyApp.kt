@@ -22,7 +22,7 @@ class NotelyApp : Application() {
 
     // Getters (not cached instances) so background threads never observe a half-initialised app.
     val notebooks: NotebookRepository get() = NotebookRepository(db.notebookDao())
-    val notes: NoteRepository get() = NoteRepository(db.noteDao(), db.versionDao(), db.notebookDao())
+    val notes: NoteRepository get() = NoteRepository(db.noteDao(), db.versionDao(), db.notebookDao(), db)
     val tags: TagRepository get() = TagRepository(db.tagDao())
     val comments: CommentRepository get() = CommentRepository(db.commentDao())
     val bookmarks: BookmarkRepository get() = BookmarkRepository(db.bookmarkDao())

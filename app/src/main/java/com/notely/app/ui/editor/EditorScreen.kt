@@ -3,6 +3,7 @@ package com.notely.app.ui.editor
 import android.content.Intent
 import android.net.Uri
 import android.speech.RecognizerIntent
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -52,6 +53,11 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 
 private val STYLES = listOf(
     "Normal", "Title", "Subtitle",
@@ -94,6 +100,10 @@ fun EditorScreen(
     var title by remember { mutableStateOf("Untitled") }
     var cardColorIndex by remember { mutableStateOf(0) }
     var loaded by remember { mutableStateOf(false) }
+    var loadError by remember { mutableStateOf<String?>(null) }
+    var editRevision by remember { mutableStateOf(0L) }
+    val saveMutex = remember(noteId) { Mutex() }
+    var leaving by remember { mutableStateOf(false) }
 
     var saveStatus by remember { mutableStateOf("Saved") }
     var dirty by remember { mutableStateOf(false) }
@@ -133,41 +143,53 @@ fun EditorScreen(
     val listState = rememberLazyListState()
     var pendingSelection by remember { mutableStateOf<Pair<Int, IntRange>?>(null) }
 
-    // ---- Load once ----
+    // A failed read is not an empty document. Keep the original bytes untouched.
     LaunchedEffect(noteId) {
-        val n = app.notes.getById(noteId)
-        if (n != null) {
-            val (b, p) = DocumentSerializer.deserialize(n.documentJson)
+        runCatching {
+            val n = app.notes.getById(noteId) ?: error("Document no longer exists")
+            val (b, p) = withContext(Dispatchers.Default) {
+                DocumentSerializer.deserializeForEditing(n.documentJson)
+            }
             blocks = b.ifEmpty { listOf(DocumentBlock()) }
             pageSetup = p
             title = n.title
             cardColorIndex = n.cardColorIndex
-        }
-        loaded = true
+            loaded = true
+        }.onFailure { loadError = "This document could not be opened safely. Its stored content has not been changed." }
     }
 
     fun serialize() = DocumentSerializer.serialize(blocks, pageSetup)
 
-    fun saveNow() {
-        if (!loaded || readOnly) return
-        saveStatus = "Saving…"
-        val json = serialize()
+    fun saveNow(): Job? {
+        if (!loaded || readOnly) return null
+        val revision = editRevision
+        val snapshot = blocks
+        val page = pageSetup
         val t = title.ifBlank { "Untitled" }
-        scope.launch(Dispatchers.IO) {
-            runCatching { app.notes.updateContent(noteId, t, json) }
-                .onSuccess {
-                    withContext(Dispatchers.Main) {
+        saveStatus = "Saving…"
+        // Application-owned write survives removal of the editor composition. Start on
+        // Main.immediate to enqueue snapshots in edit order; do JSON and Room work off-main.
+        return app.scope.launch(Dispatchers.Main.immediate) {
+            saveMutex.withLock {
+                try {
+                    withContext(Dispatchers.IO) {
+                        app.notes.updateContent(noteId, t, DocumentSerializer.serialize(snapshot, page))
+                    }
+                    if (editRevision == revision) {
                         dirty = false
                         saveStatus = TimeFmt.savedLine(System.currentTimeMillis())
                     }
+                } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    saveStatus = "Save failed — tap Save to retry"
                 }
-                .onFailure {
-                    withContext(Dispatchers.Main) { saveStatus = "Save failed — will retry" }
-                }
+            }
         }
     }
 
     fun scheduleSave() {
+        editRevision++
         dirty = true
         if (readOnly) return
         if (!autosave) {
@@ -301,8 +323,47 @@ fun EditorScreen(
 
     // Leave the editor: always flush pending changes first.
     fun leave() {
-        if (!readOnly && dirty) saveNow()
-        onBack()
+        if (leaving) return
+        leaving = true
+        saveJob?.cancel()
+        scope.launch {
+            if (!readOnly && dirty) saveNow()?.join()
+            leaving = false
+            // Keep the editor open when a flush failed (or a newer edit arrived).
+            if (!dirty || readOnly || !loaded) onBack()
+        }
+    }
+
+    BackHandler { leave() }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val flushLatest by rememberUpdatedState(newValue = {
+        if (dirty && loaded && !readOnly) {
+            saveJob?.cancel()
+            saveNow()
+        }
+        Unit
+    })
+    DisposableEffect(lifecycleOwner, noteId) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) flushLatest()
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+            flushLatest()
+        }
+    }
+
+    if (loadError != null) {
+        Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.Center) {
+            Text(loadError!!)
+            TextButton(onClick = onBack) { Text("Back to notebooks") }
+        }
+        return
+    }
+    if (!loaded) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+        return
     }
 
     Column(Modifier.fillMaxSize().background(c.bg)) {
@@ -731,7 +792,7 @@ fun EditorScreen(
                 scope.launch {
                     val n = app.notes.getById(noteId)
                     if (n != null) {
-                        val (b, p) = DocumentSerializer.deserialize(n.documentJson)
+                        val (b, p) = DocumentSerializer.deserializeForEditing(n.documentJson)
                         blocks = b.ifEmpty { listOf(DocumentBlock()) }
                         pageSetup = p
                     }
@@ -761,7 +822,7 @@ fun EditorScreen(
             onDismiss = { showTemplates = false },
             onUse = { json ->
                 pushUndo()
-                val (b, p) = DocumentSerializer.deserialize(json)
+                val (b, p) = DocumentSerializer.deserializeForEditing(json)
                 updateBlocks(b.ifEmpty { listOf(DocumentBlock()) })
                 pageSetup = p
                 showTemplates = false
