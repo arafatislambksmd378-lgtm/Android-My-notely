@@ -40,6 +40,8 @@ class DocumentRecovery(private val db: NotelyDatabase, private val scope: Corout
               commit: Boolean, onResult: (Result<Unit>) -> Unit): Job {
         val slot = slot(id)
         return synchronized(slots) {
+            // A disposed editor must not even cancel the current editor's pending write.
+            if (session != slot.session) return@synchronized Job().apply { complete() }
             val ticket = ++slot.ticket
             slot.pending?.cancel()
             scope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {

@@ -28,8 +28,8 @@ class RecoveryOrderingInstrumentedTest {
             val current = writer.beginSession(id)
             val ack = CompletableDeferred<Result<Unit>>()
             writer.write(id, current, "current", listOf(DocumentBlock(id = "stable", runs = listOf(TextRun("current")))), PageSetup(), false) { ack.complete(it) }
-            ack.await().getOrThrow()
             writer.write(id, old, "stale", emptyList(), PageSetup(), true) {}.join()
+            ack.await().getOrThrow()
             assertEquals("current", writer.load(id).first.title)
             val draft = db.recoveryDao().get(id)!!
             db.recoveryDao().put(draft.copy(sha256 = "corrupt"))
