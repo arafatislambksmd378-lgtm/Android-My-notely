@@ -824,8 +824,8 @@ fun EditorScreen(
             onUse = { json ->
                 pushUndo()
                 val (b, p) = DocumentSerializer.deserializeForEditing(json)
-                updateBlocks(b.ifEmpty { listOf(DocumentBlock()) })
                 pageSetup = p
+                updateBlocks(b.ifEmpty { listOf(DocumentBlock()) })
                 showTemplates = false
             },
             onSaveCurrent = {

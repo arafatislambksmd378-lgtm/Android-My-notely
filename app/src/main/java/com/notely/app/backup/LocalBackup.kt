@@ -33,7 +33,7 @@ class LocalBackup(private val context: Context, private val db: NotelyDatabase) 
         }
     }
 
-    private fun rows(table: String): JSONArray {
+    private fun rows(table: String, budget: LongArray): JSONArray {
         require(table in TABLES)
         val out = JSONArray()
         db.openHelper.writableDatabase.query("SELECT * FROM `$table`").use { cursor ->
@@ -48,6 +48,8 @@ class LocalBackup(private val context: Context, private val db: NotelyDatabase) 
                         else -> error("Unsupported binary database column")
                     })
                 }
+                budget[0] += row.toString().toByteArray(Charsets.UTF_8).size
+                require(budget[0] <= JSON_LIMIT) { "Database exceeds the 32 MiB backup metadata limit" }
                 out.put(row)
             }
         }
@@ -82,7 +84,10 @@ class LocalBackup(private val context: Context, private val db: NotelyDatabase) 
         val work = File(context.cacheDir, "backup_${UUID.randomUUID()}").apply { check(mkdirs()) }
         try {
             progress("Reading a consistent database snapshot…")
-            val data = db.withTransaction { JSONObject().also { root -> TABLES.forEach { root.put(it, rows(it)) } } }
+            val data = db.withTransaction {
+                val budget = longArrayOf(0L)
+                JSONObject().also { root -> TABLES.forEach { root.put(it, rows(it, budget)) } }
+            }
             val entries = JSONArray()
             val assets = JSONObject()
             val sources = linkedMapOf<String, File>()
@@ -104,7 +109,10 @@ class LocalBackup(private val context: Context, private val db: NotelyDatabase) 
             val database = File(work, "database.json").apply { writeText(data.toString(), Charsets.UTF_8) }
             require(database.length() <= JSON_LIMIT) { "Database exceeds the 32 MiB backup metadata limit" }
             sources["database.json"] = database
-            require(sources.values.sumOf { it.length() } <= LIMIT) { "Backup exceeds the 512 MiB safety limit" }
+            require(sources.size < 9999) { "Backup exceeds the file-count safety limit" }
+            val bytesRequired = sources.values.sumOf { it.length() }
+            require(context.cacheDir.usableSpace > bytesRequired + 16L * 1024 * 1024) { "Insufficient backup storage" }
+            require(bytesRequired <= LIMIT) { "Backup exceeds the 512 MiB safety limit" }
             val archive = File(work, "backup.notely.zip")
             ZipOutputStream(BufferedOutputStream(archive.outputStream())).use { zip ->
                 sources.forEach { (name, file) ->
@@ -114,7 +122,9 @@ class LocalBackup(private val context: Context, private val db: NotelyDatabase) 
                 }
                 val manifest = JSONObject().put("format", "notely-local-backup").put("version", 1)
                     .put("databaseVersion", 3).put("createdAt", System.currentTimeMillis()).put("entries", entries).put("assets", assets)
-                zip.putNextEntry(ZipEntry("manifest.json")); zip.write(manifest.toString().toByteArray(Charsets.UTF_8)); zip.closeEntry()
+                val manifestBytes = manifest.toString().toByteArray(Charsets.UTF_8)
+                require(manifestBytes.size <= 2L * 1024 * 1024) { "Manifest exceeds the safety limit" }
+                zip.putNextEntry(ZipEntry("manifest.json")); zip.write(manifestBytes); zip.closeEntry()
             }
             progress("Writing backup to the selected location…")
             archive.inputStream().use { it.copyTo(output) }; output.flush()
