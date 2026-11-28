@@ -1,0 +1,411 @@
+name: Android CI
+
+# Real compilation, unit tests, lint and APK packaging on GitHub-hosted runners.
+# Nothing in this workflow is required for the app itself to be offline-first:
+# it exists purely so a build is reproducible without a local Android SDK.
+on:
+  push:
+    branches: [ "main", "arena/**" ]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # attach APKs to a CI release
+  issues: write     # post device-run reports to the tracking issue
+
+jobs:
+  build:
+    name: Build, test, lint and package
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK (command-line tools, no third-party action)
+        run: |
+          set -euo pipefail
+          SDK_ROOT="$HOME/android-sdk"
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+          curl -fsSL -o /tmp/cmdline-tools.zip \
+            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q /tmp/cmdline-tools.zip -d "$SDK_ROOT/cmdline-tools"
+          mv "$SDK_ROOT/cmdline-tools/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
+          export ANDROID_SDK_ROOT="$SDK_ROOT"
+          export ANDROID_HOME="$SDK_ROOT"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/emulator" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" "platforms;android-34" "build-tools;34.0.0" > /dev/null
+          echo "sdk.dir=$SDK_ROOT" > local.properties
+          cat local.properties
+
+      - name: Set up Gradle (with dependency cache)
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Show toolchain versions
+        run: |
+          java -version
+          ./gradlew --version
+
+      # Compiler output is re-emitted as workflow annotations so failures are
+      # readable even from environments that cannot download raw job logs.
+      - name: Compile Kotlin (debug)
+        run: |
+          set +e
+          ./gradlew :app:compileDebugKotlin --console=plain > /tmp/compile.log 2>&1
+          rc=$?
+          tail -200 /tmp/compile.log
+          grep -E "^e: |^error:" /tmp/compile.log | head -60 | while IFS= read -r line; do
+            echo "::error title=Kotlin::${line}"
+          done
+          if [ $rc -ne 0 ]; then
+            echo "::error title=Build::compileDebugKotlin failed (exit $rc)"
+          fi
+          exit $rc
+
+      - name: Run JVM unit tests
+        run: |
+          set +e
+          ./gradlew :app:testDebugUnitTest --console=plain > /tmp/test.log 2>&1
+          rc=$?
+          tail -120 /tmp/test.log
+          if [ -d app/build/test-results/testDebugUnitTest ]; then
+            python3 .github/scripts/report_test_failures.py app/build/test-results/testDebugUnitTest
+          fi
+          if [ $rc -ne 0 ]; then
+            echo "::error title=Tests::unit tests failed (exit $rc)"
+            # Last meaningful lines of the Gradle output, as an annotation.
+            tail -25 /tmp/test.log | sed 's/\r//g' | tr '\n' '~' | cut -c1-1200 | \
+              while IFS= read -r summary; do
+                echo "::error title=Gradle output::${summary//\~/ | }"
+              done
+          fi
+          exit $rc
+
+      - name: Android Lint
+        run: ./gradlew :app:lintDebug --stacktrace
+        continue-on-error: true
+
+      - name: Assemble debug APK
+        run: ./gradlew :app:assembleDebug --stacktrace
+
+      - name: Assemble release APK (unsigned, for size/verify)
+        run: ./gradlew :app:assembleRelease --stacktrace
+        continue-on-error: true
+
+      - name: Collect reports and artifacts
+        if: always()
+        run: |
+          mkdir -p ci-out
+          find app/build/test-results -name "*.xml" -exec cp --parents {} ci-out/ \; 2>/dev/null || true
+          find app/build/outputs -name "*.apk" -exec cp --parents {} ci-out/ \; 2>/dev/null || true
+          find app/build/reports -maxdepth 3 -type f -name "*.html" -exec cp --parents {} ci-out/ \; 2>/dev/null || true
+          ls -lR ci-out | head -50
+
+      - name: Report APK facts
+        if: always()
+        run: |
+          for apk in $(find app/build/outputs -name "*.apk" 2>/dev/null); do
+            size=$(du -h "$apk" | cut -f1)
+            sha=$(sha256sum "$apk" | cut -d' ' -f1)
+            echo "::notice title=APK ${apk##*/}::size $size sha256 $sha"
+          done
+          # Test totals, so the run itself states how many assertions passed.
+          python3 - <<'PYEOF'
+          import glob, xml.etree.ElementTree as ET
+          total = failures = skipped = 0
+          for f in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              try:
+                  r = ET.parse(f).getroot()
+              except Exception:
+                  continue
+              total += int(r.get('tests', 0)); failures += int(r.get('failures', 0)) + int(r.get('errors', 0))
+              skipped += int(r.get('skipped', 0))
+          if total:
+              print(f"::notice title=Unit tests::{total} run, {failures} failed, {skipped} skipped")
+          PYEOF
+
+      - name: APK composition (largest components)
+        if: always()
+        run: |
+          BUNDLE="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/bundletool.jar"
+          APK=$(find app/build/outputs -name "app-debug.apk" | head -1)
+          if [ -n "$APK" ]; then
+            echo "== top entries by uncompressed size =="
+            unzip -l "$APK" | sort -k1 -n -r | head -18
+            echo "== dex/lib breakdown =="
+            unzip -l "$APK" | awk '/classes[0-9]*\.dex|lib\/|assets\/|res\// {print $1, $4}' | \
+              awk '{split($2,a,"/"); key=a[1]; sz[key]+=$1} END {for (k in sz) printf "%-12s %8.1f MB\n", k, sz[k]/1048576}' | sort -k2 -n -r
+          fi
+
+      - name: Publish APK to a GitHub Release
+        if: github.event_name == 'push'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -e
+          TAG="ci-build-${GITHUB_RUN_NUMBER}"
+          {
+            echo "Automated build of \`${GITHUB_SHA}\`."
+            echo ""
+            echo "| Asset | Size | SHA-256 |"
+            echo "|---|---|---|"
+            for apk in $(find app/build/outputs -name "*.apk" | sort); do
+              echo "| \`${apk##*/}\` | $(stat -c%s "$apk") B | \`$(sha256sum "$apk" | cut -d' ' -f1)\` |"
+            done
+            echo ""
+            echo "The debug APK is installable as-is. The release APK is R8-minified and **unsigned**."
+            echo "Install: \`adb install -r app-debug.apk\`"
+          } > /tmp/release-notes.md
+          gh release create "$TAG" \
+            --title "Notely build ${GITHUB_RUN_NUMBER}" \
+            --notes-file /tmp/release-notes.md \
+            $(find app/build/outputs -name "*.apk" | sort)
+          gh release view "$TAG" --json assets --jq '.assets[] | "\(.name) \(.size)"'
+
+      - name: Upload build artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: notely-build-${{ github.run_number }}
+          path: ci-out/**
+          if-no-files-found: warn
+          retention-days: 14
+
+  device:
+    name: Install and run on an emulator
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Install Android SDK
+        run: |
+          set -euo pipefail
+          SDK_ROOT="$HOME/android-sdk"
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+          curl -fsSL -o /tmp/cmdline-tools.zip \
+            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q /tmp/cmdline-tools.zip -d "$SDK_ROOT/cmdline-tools"
+          mv "$SDK_ROOT/cmdline-tools/cmdline-tools" "$SDK_ROOT/cmdline-tools/latest"
+          export ANDROID_SDK_ROOT="$SDK_ROOT" ANDROID_HOME="$SDK_ROOT"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/emulator" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          yes | "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" \
+            "platform-tools" "platforms;android-34" "build-tools;34.0.0" \
+            "system-images;android-34;default;x86_64" "emulator" > /dev/null
+          echo "sdk.dir=$SDK_ROOT" > local.properties
+
+      - name: Allow KVM access
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          ls -l /dev/kvm || true
+
+      - name: Boot an emulator
+        run: |
+          set -o pipefail
+          INFO=/tmp/boot.md
+          echo "### Emulator boot" > "$INFO"
+          echo '```' >> "$INFO"
+          set +e
+          echo "sdkroot=$ANDROID_SDK_ROOT"
+          echo "kvm: $(ls -l /dev/kvm 2>&1)"
+          echo "system-images: $(ls "$ANDROID_SDK_ROOT/system-images/android-34/default" 2>&1)"
+          echo "which adb: $(command -v adb || echo MISSING)"
+          echo "which emulator: $(command -v emulator || echo MISSING)"
+          mkdir -p "$HOME/.android/avd"
+          export ANDROID_AVD_HOME="$HOME/.android/avd"
+          echo "avd_home=$ANDROID_AVD_HOME" >> "$INFO"
+          printf 'no\n' | "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/avdmanager" create avd \
+            -n notely -k "system-images;android-34;default;x86_64" --force >> "$INFO" 2>&1
+          echo "avdmanager rc=$?" >> "$INFO"
+          echo "--- available avds ---" >> "$INFO"
+          "$ANDROID_SDK_ROOT/emulator/emulator" -list-avds >> "$INFO" 2>&1 || true
+          ls -la "$ANDROID_AVD_HOME" >> "$INFO" 2>&1 || true
+          echo "ANDROID_AVD_HOME=$ANDROID_AVD_HOME" >> "$GITHUB_ENV"
+          nohup "$ANDROID_SDK_ROOT/emulator/emulator" -avd notely -no-window -no-audio \
+            -no-boot-anim -gpu swiftshader_indirect -no-snapshot -accel auto \
+            > /tmp/emulator.log 2>&1 &
+          EPID=$!
+          echo "emulator pid=$EPID" >> "$INFO"
+          timeout 240 adb wait-for-device >> "$INFO" 2>&1 || echo "adb wait timed out" >> "$INFO"
+          BOOTED=0
+          for i in $(seq 1 90); do
+            booted=$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\r')
+            if [ "$booted" = "1" ]; then BOOTED=1; echo "boot completed after ~$((i*5))s" >> "$INFO"; break; fi
+            if ! kill -0 $EPID 2>/dev/null; then echo "emulator process exited early" >> "$INFO"; break; fi
+            sleep 5
+          done
+          if [ "$BOOTED" != "1" ]; then
+            echo "--- last 40 lines of the emulator log ---" >> "$INFO"
+            tail -40 /tmp/emulator.log >> "$INFO" 2>&1 || true
+          fi
+          adb devices >> "$INFO" 2>&1 || true
+          echo '```' >> "$INFO"
+          echo "" >> "$INFO"
+          echo "### emulator log (last 60)" >> "$INFO"
+          echo '```' >> "$INFO"
+          tail -60 /tmp/emulator.log >> "$INFO" 2>&1 || true
+          echo '```' >> "$INFO"
+          cat "$INFO"
+          {
+            echo "EMULATOR_INFO<<__BOOT_EOF__"
+            cat "$INFO"
+            echo "__BOOT_EOF__"
+            echo "EMULATOR_OK=$BOOTED"
+          } >> "$GITHUB_ENV"
+
+      - uses: gradle/actions/setup-gradle@v3
+
+      - name: Build debug APK
+        run: ./gradlew :app:assembleDebug --console=plain
+
+      - name: Install and launch the app, then run instrumented tests
+        id: device
+        run: |
+          set -o pipefail
+          APK=app/build/outputs/apk/debug/app-debug.apk
+          REPORT=/tmp/report.md
+          stage=start
+          fail=0
+          echo "## Device run ${{ github.run_number }} (${{ github.sha }})" > "$REPORT"
+          echo "" >> "$REPORT"
+          printf '%s\n\n' "$EMULATOR_INFO" >> "$REPORT"
+          timeout 300 adb wait-for-device || { echo "- **no device**" >> "$REPORT"; fail=1; }
+          echo "- adb devices: \`\`\`$(adb devices | tail -n +2 | tr '\n' ';')\`\`\`" >> "$REPORT"
+
+          stage=install
+          if adb install -r -t "$APK" > /tmp/install.txt 2>&1; then
+            echo "- install: OK" >> "$REPORT"
+          else
+            echo "- install: **FAILED** \`\`\`$(tail -20 /tmp/install.txt)\`\`\`" >> "$REPORT"
+            fail=1
+          fi
+
+          if [ "$fail" = "0" ]; then
+            stage=permissions
+            # Pre-grant runtime permissions so the app's own UI is what we screenshot,
+            # not a system permission dialog.
+            for perm in android.permission.CAMERA android.permission.POST_NOTIFICATIONS; do
+              adb shell pm grant com.notely.app.debug "$perm" 2>>"$REPORT" || true
+            done
+            echo "- permissions granted: CAMERA, POST_NOTIFICATIONS" >> "$REPORT"
+
+            stage=launch
+            adb shell am force-stop com.notely.app.debug || true
+            adb shell am start -W -n com.notely.app.debug/com.notely.app.MainActivity > /tmp/start.txt 2>&1 || true
+            echo "- cold start: \`\`\`$(grep -E 'Status|TotalTime|WaitTime' /tmp/start.txt | tr '\n' ';')\`\`\`" >> "$REPORT"
+            sleep 8
+
+            stage=resumed
+            TOP=$(adb shell dumpsys activity activities | grep -E "topResumedActivity|mResumedActivity" | head -1 | tr -d '\r')
+            echo "- resumed activity: \`${TOP}\`" >> "$REPORT"
+            case "$TOP" in
+              *com.notely.app*MainActivity*|*PermissionController*|*GrantPermissionsActivity*)
+                echo "- foreground check: OK" >> "$REPORT" ;;
+              *) echo "- **unexpected foreground activity**" >> "$REPORT"; fail=1 ;;
+            esac
+
+            stage=crash
+            if adb logcat -d -b crash | grep -q "FATAL EXCEPTION"; then
+              echo "- **CRASH**" >> "$REPORT"
+              echo '```' >> "$REPORT"
+              adb logcat -d -b crash | tail -40 >> "$REPORT"
+              echo '```' >> "$REPORT"
+              fail=1
+            else
+              echo "- crash log: clean" >> "$REPORT"
+            fi
+
+            stage=screenshot
+            adb exec-out screencap -p > /tmp/home.png 2>/dev/null || true
+            if [ -s /tmp/home.png ]; then
+              echo "- screenshot: $(stat -c%s /tmp/home.png) bytes" >> "$REPORT"
+            else
+              echo "- screenshot: unavailable" >> "$REPORT"
+            fi
+
+            stage=memory
+            echo "- memory (PSS): \`$(adb shell dumpsys meminfo com.notely.app.debug | grep -E 'TOTAL PSS|TOTAL:' | head -2 | tr -s ' ' | tr '\n' ';')\`" >> "$REPORT"
+            echo "- apk: $(ls -lh "$APK" | awk '{print $5}')" >> "$REPORT"
+
+            stage=instrumented
+            if timeout 1500 ./gradlew :app:connectedDebugAndroidTest --console=plain > /tmp/connected.txt 2>&1; then
+              echo "- instrumented tests: PASSED" >> "$REPORT"
+            else
+              echo "- instrumented tests: **FAILED**" >> "$REPORT"
+              echo '```' >> "$REPORT"
+              grep -E "FAILED|Tests on|tests completed|Exception|assert" /tmp/connected.txt | head -40 >> "$REPORT"
+              tail -25 /tmp/connected.txt >> "$REPORT"
+              echo '```' >> "$REPORT"
+              fail=1
+            fi
+            grep -E "Tests on|tests completed" /tmp/connected.txt | head -5 >> "$REPORT" || true
+          fi
+
+          echo "" >> "$REPORT"
+          echo "stage reaching: $stage · fail=$fail" >> "$REPORT"
+          echo "$fail" > /tmp/device_fail
+          echo "DEVICE_FAIL=$fail" >> "$GITHUB_ENV"
+          cat "$REPORT"
+
+      - name: Post the device report to the tracking issue
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -f /tmp/report.md ]; then
+            gh issue comment 1 --repo "$GITHUB_REPOSITORY" --body-file /tmp/report.md || \
+              echo "::warning title=Device::could not post the report"
+          else
+            {
+              printf '## Device run ${{ github.run_number }} (%s)\n\nNo device report was produced.\n\n' "${{ github.sha }}"
+              printf '%s\n' "${EMULATOR_INFO:-no boot info}"
+            } > /tmp/noreport.md
+            gh issue comment 1 --repo "$GITHUB_REPOSITORY" --body-file /tmp/noreport.md || true
+          fi
+          if [ "$(cat /tmp/device_fail 2>/dev/null || echo 1)" != "0" ]; then
+            echo "::error title=Device::a device stage failed; see issue #1 for the report"
+            exit 1
+          fi
+
+      - name: Upload device artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: device-run-${{ github.run_number }}
+          path: |
+            /tmp/home.png
+            /tmp/start.txt
+            app/build/reports/androidTests/**
+          if-no-files-found: warn
+          retention-days: 14

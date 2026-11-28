@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="notely_primary">#8950F5</color>
+    <color name="notely_deep">#7040E8</color>
+    <color name="notely_light">#F0E9FF</color>
+    <color name="notely_green">#39B980</color>
+    <color name="notely_blue">#438CEB</color>
+    <color name="notely_yellow">#F2C94C</color>
+    <color name="notely_bg">#F8F7FB</color>
+    <color name="notely_bg_dark">#1B1A24</color>
+    <color name="notely_text">#24232B</color>
+    <color name="notely_text2">#92909D</color>
+    <color name="notely_border">#ECEAF1</color>
+</resources>
