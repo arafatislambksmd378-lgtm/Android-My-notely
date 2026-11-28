@@ -369,7 +369,7 @@ fun EditorScreen(
         return
     }
 
-    Column(Modifier.fillMaxSize().background(c.bg)) {
+    EditorColumn(Modifier.fillMaxSize().background(c.bg)) {
         // ---------- Top bar (reference design) ----------
         Row(
             Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 4.dp),
@@ -662,6 +662,8 @@ fun EditorScreen(
         }
     }
 
+    // Non-inline composition boundaries keep the large editor below dex verifier register pressure.
+    EditorSection {
     // ---------- Sheets & dialogs ----------
     if (showOptions) {
         NoteOptionsSheet(
@@ -750,6 +752,8 @@ fun EditorScreen(
             onScan = { showOcr = true }
         )
     }
+    }
+    EditorSection {
     if (showPageSetup) {
         PageSetupSheet(
             initial = pageSetup,
@@ -842,6 +846,8 @@ fun EditorScreen(
             }
         )
     }
+    }
+    EditorSection {
     if (showWordCount) {
         AlertDialog(
             onDismissRequest = { showWordCount = false },
@@ -917,6 +923,8 @@ fun EditorScreen(
             showBookmarkDialog = false
         })
     }
+    }
+    EditorSection {
     if (showDrawing) {
         DrawingScreen(
             onDismiss = { showDrawing = false },
@@ -991,6 +999,18 @@ fun EditorScreen(
             showShapePicker = false
         }
     }
+    }
+}
+
+/** Non-inline boundaries: do not inline these back into the monolithic editor method. */
+@Composable
+private fun EditorColumn(modifier: Modifier, content: @Composable ColumnScope.() -> Unit) {
+    Column(modifier = modifier, content = content)
+}
+
+@Composable
+private fun EditorSection(content: @Composable () -> Unit) {
+    content()
 }
 
 // ---------------- small helpers/composables ----------------
