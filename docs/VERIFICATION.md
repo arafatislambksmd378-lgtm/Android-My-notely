@@ -158,3 +158,7 @@ No frame-timing profile, no scroll jank measurement and no long-session memory g
 - No import of external DOCX/ODT.
 - On-device LLM inference is not wired; downloads only.
 - PIN hashing is PBKDF2 in DataStore, not Keystore-backed.
+
+## Final continuation candidate: Build 59
+
+Published version **1.0.1 (2)** from `5a99db0`: [release and downloads](https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/tag/notely-46105415788-1), [successful workflow](https://github.com/arafatislambksmd378-lgtm/Android-My-notely/actions/runs/46105415788). **37 JVM + 15 Android tests, zero failures/skips**, lint and exact debug APK install/launch passed; separate Force Stop and SIGKILL recovery passed. Debug-signed and unsigned artifacts only; **NOT production ready**. Full hashes, limitations and acceptance matrix: [final completion report](FINAL-COMPLETION-2026-11-28.md).

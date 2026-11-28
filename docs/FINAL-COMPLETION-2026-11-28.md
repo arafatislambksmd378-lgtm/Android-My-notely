@@ -28,7 +28,7 @@ PASS is scoped to executed checks below, not to all possible workflows. Historic
 | Area | Status | Scope / limitation |
 |---|---|---|
 | Build 50 repairs | PARTIAL | Existing regressions retained; current final run listed below. |
-| Schema 2→3 migration | PARTIAL | Preserves an existing disk-backed note in an added integration test; await recorded result. |
+| Schema 2→3 migration | PARTIAL | PASS in build 59: preserves an existing disk-backed note; scoped migration fixture. |
 | Recovery journal / stale-write rejection / digest validation | PARTIAL | Implemented; tests include 100 rapid snapshots, old-session rejection and corrupt/stale-generation fallback. |
 | Activity relaunch save/reopen/edit/save | PARTIAL | Existing real editor regression retained; current result below. |
 | Force Stop and SIGKILL recovery | PASS | Build 57 executed both actual kills and final UI assertions; scoped to acknowledged journal snapshots, not instantaneous pre-commit edits. |
@@ -37,7 +37,7 @@ PASS is scoped to executed checks below, not to all possible workflows. Historic
 | Latest keystroke before I/O acknowledgment | PARTIAL | No zero-loss guarantee for edits never committed to durable storage; documented durability boundary. |
 | All-element persistence creation through UI | PARTIAL | Fixture covers modeled text/styles/headings/lists/images/tables/charts/shapes/raster drawing/handwriting/link/footnote/page setup; UI changes body text and bold. Does not create every fixture element through toolbars. |
 | Section breaks / table-cell rich text / editable stroke persistence | FAIL | Model/features still incomplete; not invented to make acceptance green. |
-| Local backup→delete fixture→restore→compare | PARTIAL | Implemented; isolated test uses two notebooks, complete model fixtures, genuine binaries and associated metadata. Await recorded result. |
+| Local backup→delete fixture→restore→compare | PARTIAL | Implemented; isolated test uses two notebooks, complete model fixtures, genuine binaries and associated metadata. Passed in build 59; full user-library certification remains partial. |
 | Copy-only restore conflicts / archive tamper/traversal/version/duplicate-ID rejection | PARTIAL | Implemented and regression tests added; exact run result below. |
 | Backup encryption / authentication | PARTIAL | Explicitly unencrypted ZIP, private-location warning; hashes detect corruption, not authenticity. No secrets included. |
 | Automatic orphan cleanup / interrupted restore hard-kill recovery | PARTIAL | Failed/cancelled in-process restores clean up; hard kill may leave unreferenced files. No broad destructive cleanup added. |
@@ -53,7 +53,7 @@ PASS is scoped to executed checks below, not to all possible workflows. Historic
 | Physical 3 GB / 64 GB performance | BLOCKED | No physical hardware available. Emulator metrics are separate and limited. |
 | Signature/identity/version/archive validation | PARTIAL | New CI gate implemented; signing branch cannot be tested without supplied credentials. |
 | Signed production APK | BLOCKED | CI reported no signing secrets configured; no private key was fabricated. |
-| Exact published debug APK installation/launch | PARTIAL | New gate; final evidence below. |
+| Exact published debug APK installation/launch | PASS | Build 59 exact packaged debug bytes installed, launched and remained foreground without immediate fatal crash. |
 | Complete directive / production release acceptance | FAIL | Missing feature/UI/security/performance/signing requirements remain. |
 
 ## Tests and evidence
@@ -66,7 +66,7 @@ Run **46102586063** (build 56, `e546ce0`): **37 JVM and 13 Android tests passed,
 
 Run **46103807443** (build 57, `73f25df`): **SUCCESS**, build + device + publication jobs all passed. **37 JVM and 13 Android tests, 0 failures/0 skipped**. API-readable annotations confirm Force Stop then SIGKILL recovery with real editor reopening and no pre-kill lifecycle flush. The exact build-job debug APK was separately installed/launched/foreground-checked without an immediate fatal crash. The prerelease was published at https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/tag/notely-46103807443-1 . Emulator home launch: 913 ms TotalTime, PSS 106,082 KB; not a physical/long-document benchmark.
 
-Final review then added attachment-basename preservation (generated per-asset subdirectories prevent collisions), a cancellation check before entering the non-cancellable commit, and a generated About version resource rather than a stale hardcoded label. These are covered by filename assertions and two additional tests. A final rerun must verify this final source commit before the final APK delivery is claimed.
+Final review then added attachment-basename preservation (generated per-asset subdirectories prevent collisions), a cancellation check before entering the non-cancellable commit, and a generated About version resource rather than a stale hardcoded label. These are covered by filename assertions and two additional tests. The final rerun below verified these fixes, including a valid 250-byte attachment basename.
 
 Configured final suites: existing **37 JVM tests**, expanded **15 Android tests** (existing 7 + About version 1 + backup/restore/security/migration/cancellation 5 + recovery ordering 1 + ordinary journal regression 1). Separately, process-kill harness runs two deliberately terminated instrumentation sessions and one normal verification session. Deliberate terminations are not counted as successful completed JUnit tests. The harness requires durable acknowledgment, verifies main note was not lifecycle-flushed, checks process exit, restarts, compares all supported fixture blocks/page settings/media and edits again.
 
@@ -80,7 +80,21 @@ Only their presence/absence is reported. No values were read back, printed or co
 
 Unsigned release APKs cannot be installed and are not claimed install-tested. Debug APKs are debug-signed, debuggable and not a production release. Debug certificates generated on fresh runners may differ between builds, so debug builds are not a substitute for a stable production update key. Never erase user data merely to bypass signature conflicts.
 
-Final run/release/download URLs, sizes and SHA-256 are to be recorded from successful publication. The pipeline generates a unique run-ID/attempt tag and refuses to overwrite an existing release. `apk-metadata.json` records exact build commit, run, timestamp, package/version, byte sizes, hashes and public certificate fingerprints.
+### Final published candidate — Build 59
+
+- **SUCCESS**: [workflow 46105415788](https://github.com/arafatislambksmd378-lgtm/Android-My-notely/actions/runs/46105415788), source `5a99db01c698eb626b177759673c6f99e405ada9`, version **1.0.1 (2)**.
+- [Published prerelease](https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/tag/notely-46105415788-1).
+- **37 JVM + 15 Android tests: 0 failures, 0 skipped**; lint, assemblies, archive/package/version/signature checks passed. Separate Force Stop → reopen → edit → SIGKILL → reopen harness passed. Exact debug APK install/launch/foreground/crash gate passed. Unsigned installation correctly excluded.
+- Emulator home startup **894 ms**, PSS **106,025 KB** (not physical hardware or large-document profiling).
+
+| Direct download | Bytes | SHA-256 | Signing |
+|---|---:|---|---|
+| [Debug APK](https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/download/notely-46105415788-1/app-debug.apk) | 62,943,113 | `510da4d7190582499d0c2621dce5c160d1e9d5e65293ddc8b132b4ec0380679d` | Debug-signed; install-tested |
+| [Unsigned candidate](https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/download/notely-46105415788-1/app-release-unsigned.apk) | 45,490,929 | `9c541383a3b1c37aacec9733be9272c78a095051a080e8bd2134b4735e621575` | UNSIGNED; not installable |
+
+[Machine-readable metadata](https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/download/notely-46105415788-1/apk-metadata.json). Debug certificate SHA-256: `6dab65144a9b1e9b8372722e6f9249949981bfe6cec9fb84a5b57de6d29f85f4`. No signed production APK exists. Documentation-only commits after this source do not change the delivered bytes.
+
+ The pipeline generates a unique run-ID/attempt tag and refuses to overwrite an existing release. `apk-metadata.json` records exact build commit, run, timestamp, package/version, byte sizes, hashes and public certificate fingerprints.
 
 ## Performance and remaining work
 

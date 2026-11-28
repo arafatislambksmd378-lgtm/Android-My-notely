@@ -122,3 +122,7 @@ No signed production release was produced. Publication occurred only after both 
 The FAIL/PARTIAL rows above are real unfinished engineering, not all external blockers. Priorities: durable draft journal and process-termination UI test; actual pinned/maintained local inference integration with verified models; local backup and non-destructive restore; structured search/index migrations; export visual verification; scanner/import/vector workflows; target-device performance; signed release and full acceptance suite. Physical hardware, absent reference images, external renderer availability and signing custody are separate verification blockers.
 
 **NOT READY** is the only supported production verdict. Targeted repairs are useful but neither compilation nor a passing regression suite can substitute for the directive's acceptance criteria.
+
+## Final continuation candidate: Build 59
+
+Published version **1.0.1 (2)** from `5a99db0`: [release and downloads](https://github.com/arafatislambksmd378-lgtm/Android-My-notely/releases/tag/notely-46105415788-1), [successful workflow](https://github.com/arafatislambksmd378-lgtm/Android-My-notely/actions/runs/46105415788). **37 JVM + 15 Android tests, zero failures/skips**, lint and exact debug APK install/launch passed; separate Force Stop and SIGKILL recovery passed. Debug-signed and unsigned artifacts only; **NOT production ready**. Full hashes, limitations and acceptance matrix: [final completion report](FINAL-COMPLETION-2026-11-28.md).
